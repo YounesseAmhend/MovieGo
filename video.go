@@ -1,346 +1,531 @@
 package moviego
 
-import (
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"runtime"
-	"sync"
-	"time"
+// Video represents a video file with its properties and processing options
+type Video struct {
+	filename       string
+	codec          Codec
+	width          uint64
+	height         uint64
+	fps            uint64
+	duration       float64
+	frames         uint64
+	ffmpegArgs     map[string][]string
+	filters        []Filter
+	customFilters  []func([]byte, int)
+	isTemp         bool
+	audio          Audio
+	bitRate        string
+	preset         preset
+	withMask       bool
+	pixelFormat    string
+	startTime      float64              // Start time for subclip in seconds
+	endTime        float64              // End time for subclip in seconds
+	sourceVideos   []*Video             // Source videos for concatenation (nil if not a concatenated video)
+	isComposited   bool                 // Flag to identify composite videos
+	compositeItems []*CompositeClipItem // Clips to composite (nil if not a composite video)
+	textClips      []*TextClip          // Text overlays to render on the video
+	subtitleClips  []*SubtitleClip      // Subtitle files to burn into the video
+	imageClips     []*ImageClip         // Image overlays to render on the video
+	colorClips      []*ColorClip         // Color overlays to render on the video
+}
 
-	"github.com/cheggaaa/pb/v3"
+// VideoParameters holds configuration for video processing
+
+type preset string
+
+const (
+	// Software encoder presets (libx264, libx265, etc.)
+	UltraFast preset = "ultrafast"
+	SuperFast preset = "superfast"
+	VeryFast  preset = "veryfast"
+	Fast      preset = "fast"
+	Medium    preset = "medium"
+	Slow      preset = "slow"
+	VerySlow  preset = "veryslow"
+	Placebo   preset = "placebo"
+
+	// NVIDIA NVENC presets (internal use only)
+	presetNvencFast   preset = "fast"
+	presetNvencMedium preset = "medium"
+	presetNvencSlow   preset = "slow"
+	presetNvencHQ     preset = "hq"
+
+	// AMD AMF presets (internal use only)
+	presetAmfSpeed    preset = "speed"
+	presetAmfBalanced preset = "balanced"
+	presetAmfQuality  preset = "quality"
+
+	// Intel QSV presets (internal use only)
+	presetQsvVeryFast preset = "veryfast"
+	presetQsvFast     preset = "fast"
+	presetQsvMedium   preset = "medium"
+	presetQsvSlow     preset = "slow"
+	presetQsvVerySlow preset = "veryslow"
 )
 
-// Video struct and its methods moved from moviego.go
-
-type Video struct {
-	filename   string
-	codec      string
-	width      int64
-	height     int64
-	fps        int16
-	duration   float64
-	frames     int64
-	ffmpegArgs map[string][]string
-	filters    []Filter
-	customFilters []func([]byte, int)
-	isTemp     bool
-	audio      Audio
-	bitRate    int64
+type VideoParameters struct {
+	OutputPath  string
+	Threads     uint16
+	Codec       Codec
+	Fps         uint64
+	Preset      preset
+	WithMask    bool
+	Bitrate     string
+	PixelFormat string
 }
 
-func (video *Video) writeVideo(outputFile string) {
-	const tempVideoFile = "temp_video.mp4"
+type pixelFormat string
 
-	// First, extract audio from the original video
-	audioCmd := exec.Command("ffmpeg",
-		"-loglevel", "error",
-		"-i", video.GetFilename(),
-		"-vn",             // No video
-		"-acodec", "copy", // Copy audio codec
-		"-y",
-		"temp_audio.aac",
-	)
+const (
+	PixelFormatRGBA    pixelFormat = "rgba"
+	PixelFormatRGB     pixelFormat = "rgb"
+	PixelFormatYUV420P pixelFormat = "yuv420p"
+	PixelFormatYUV422P pixelFormat = "yuv422p"
+	PixelFormatYUV444P pixelFormat = "yuv444p"
+)
 
-	if err := audioCmd.Run(); err != nil {
-		fmt.Printf("Warning: Could not extract audio: %v\n", err)
-	}
+type Codec string
 
-	// FFmpeg command to read frames from test.mp4
-	inputCmd := exec.Command("ffmpeg",
-		"-loglevel", "error",
-		"-i", video.GetFilename(),
-		"-f", "rawvideo",
-		"-threads", "16",
-		"-pix_fmt", "rgb24",
-		"-r", fmt.Sprintf("%d", video.GetFps()),
-		"-",
-	)
+const (
+	// H.264/AVC codecs
+	CodecH264      Codec = "h264"
+	CodecLibx264   Codec = "libx264"
+	CodecH264Auto  Codec = "h264_auto"
+	CodecH264Nvenc Codec = "h264_nvenc"
+	CodecH264Qsv   Codec = "h264_qsv"
+	CodecH264Amf   Codec = "h264_amf"
+	CodecH264Vt    Codec = "h264_videotoolbox"
 
-	// FFmpeg command to encode raw frames into temp video file
-	outputCmd := exec.Command("ffmpeg",
-		"-loglevel", "warning",
-		"-f", "rawvideo",
-		"-pix_fmt", "rgb24",
-		"-s", fmt.Sprintf("%dx%d", video.width, video.height),
-		"-r", fmt.Sprintf("%d", video.GetFps()),
-		"-i", "-",
-		"-c:v", "libx264",
-		"-pix_fmt", "yuv420p",
-		"-threads", "16",
-		"-b:v", fmt.Sprintf("%d", video.GetBitRate()),
-		"-y",
-		tempVideoFile,
-	)
+	// H.265/HEVC codecs
+	CodecH265      Codec = "h265"
+	CodecHevc      Codec = "hevc"
+	CodecLibx265   Codec = "libx265"
+	CodecHevcNvenc Codec = "hevc_nvenc"
+	CodecHevcQsv   Codec = "hevc_qsv"
+	CodecHevcAmf   Codec = "hevc_amf"
+	CodecHevcVt    Codec = "hevc_videotoolbox"
 
-	// Set up pipes
-	inputStdout, err := inputCmd.StdoutPipe()
-	if err != nil {
-		panic(err)
-	}
+	// VP8/VP9 codecs
+	CodecVP8       Codec = "vp8"
+	CodecVP9       Codec = "vp9"
+	CodecLibvpx    Codec = "libvpx"
+	CodecLibvpxVP9 Codec = "libvpx-vp9"
 
-	outputStdin, err := outputCmd.StdinPipe()
-	if err != nil {
-		panic(err)
-	}
+	// AV1 codecs
+	CodecAV1       Codec = "av1"
+	CodecLibaomAV1 Codec = "libaom-av1"
+	CodecLibsvtav1 Codec = "libsvtav1"
+	CodecAV1Nvenc  Codec = "av1_nvenc"
+	CodecAV1Qsv    Codec = "av1_qsv"
 
-	inputStderr, _ := inputCmd.StderrPipe()
-	outputStderr, _ := outputCmd.StderrPipe()
+	// MPEG codecs
+	CodecMpeg2video Codec = "mpeg2video"
+	CodecMpeg4      Codec = "mpeg4"
+	CodecMpeg1video Codec = "mpeg1video"
 
-	go io.Copy(os.Stderr, inputStderr)
-	go io.Copy(os.Stderr, outputStderr)
+	// Other codecs
+	CodecTheora   Codec = "theora"
+	CodecWmv1     Codec = "wmv1"
+	CodecWmv2     Codec = "wmv2"
+	CodecWmv3     Codec = "wmv3"
+	CodecVc1      Codec = "vc1"
+	CodecProres   Codec = "prores"
+	CodecProresKS Codec = "prores_ks"
+	CodecDNxHD    Codec = "dnxhd"
+	CodecDNxHR    Codec = "dnxhr"
+	CodecHuffYUV  Codec = "huffyuv"
+	CodecFFV1     Codec = "ffv1"
+	CodecUtvideo  Codec = "utvideo"
+	CodecMjpeg    Codec = "mjpeg"
+	CodecLibxvid  Codec = "libxvid"
+)
 
-	// Start both processes
-	if err := inputCmd.Start(); err != nil {
-		panic(err)
-	}
-	if err := outputCmd.Start(); err != nil {
-		panic(err)
-	}
-	frameSize := video.width * video.height * 3
+// ============================================================================
+// Video Property Getters and Setters
+// ============================================================================
 
-	buf := make([]byte, frameSize)
-	frameCount := 0
-	totalFrames := video.GetFrames()
-
-	fmt.Printf("Processing video frames | Total Frames: %d | Bitrate: %d kbps | FPS: %d\n",
-		totalFrames, video.GetBitRate()/1000, video.GetFps())
-
-	// Create progress bar with pb/v3
-	bar := pb.New64(totalFrames)
-	bar.SetTemplateString(`{{string . "prefix"}}{{counters . }} {{cyan (bar . "[" "|" "}>" " " "]")}} {{percent . }} {{speed . }} {{rtime . "ETA %s"}}{{string . "suffix"}}`)
-	bar.Set("prefix", "\033[32mProcessing frames:\033[0m ")
-	bar.Set("suffix", fmt.Sprintf(" | %d kbps", video.GetBitRate()/1000))
-	bar.SetRefreshRate(50 * time.Millisecond)
-	bar.Set(pb.Terminal, true)
-	bar.Set(pb.Color, true)
-	bar.Start()
-
-	for {
-		// Read one frame
-		_, err := io.ReadFull(inputStdout, buf)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			break
-		} else if err != nil {
-			panic(err)
-		}
-
-		// Optional: Process the frame (edit pixels, filter, etc.)
-		// processFrame(buf, []func([]byte, int){})
-		processFrame(buf, video.customFilters, video.filters)
-		// / inverseColors(data, i)
-		// blackAndWhite(data, i)
-		// sepiaTone(data, i)
-		// edgeDetection(data, i)
-
-		// Write the frame to FFmpeg encoder
-		_, err = outputStdin.Write(buf)
-		if err != nil {
-			panic(err)
-		}
-
-		frameCount++
-
-		// Update progress bar
-		bar.Increment()
-	}
-
-	bar.Finish()
-
-	// Close stdin to signal EOF to FFmpeg encoder
-	outputStdin.Close()
-
-	// Wait for processes to finish
-	if err := inputCmd.Wait(); err != nil {
-		panic(err)
-	}
-	if err := outputCmd.Wait(); err != nil {
-		panic(err)
-	}
-
-	fmt.Println("\nVideo processing complete. Now combining with audio...")
-
-	// Combine processed video with original audio
-	combineCmd := exec.Command("ffmpeg",
-		"-loglevel", "error",
-		"-i", tempVideoFile,
-		"-i", video.GetFilename(),
-		"-c:v", "copy", // Copy video codec
-		"-c:a", "copy", // Copy audio codec
-		"-map", "0:v:0", // Use video from first input (processed video)
-		"-map", "1:a:0", // Use audio from second input (original video)
-		"-shortest", // End when shortest stream ends
-		"-y",
-		outputFile,
-	)
-
-	if err := combineCmd.Run(); err != nil {
-		fmt.Printf("Warning: Could not combine audio: %v\n", err)
-		// If combining fails, just copy the temp video as output
-		copyCmd := exec.Command("cp", tempVideoFile, outputFile)
-		if err := copyCmd.Run(); err != nil {
-			panic(err)
-		}
-	}
-
-	// Clean up temporary files
-	os.Remove(tempVideoFile)
-	os.Remove("temp_audio.aac")
-
-	fmt.Printf("Video processing complete: %s (with audio)", outputFile)
-
-	// Print FFmpeg errors
-}
-
-func processFrame(data []byte, funcs []func([]byte, int), filters []Filter) {
-	var wg sync.WaitGroup
-	numWorkers := runtime.NumCPU()
-	chunkSize := len(data) / numWorkers
-
-	// Ensure chunkSize is divisible by 3 to maintain pixel boundaries
-	if chunkSize%3 != 0 {
-		chunkSize -= chunkSize % 3
-	}
-
-	for worker := 0; worker < numWorkers; worker++ {
-		wg.Add(1)
-		start := worker * chunkSize
-		end := start + chunkSize
-		if worker == numWorkers-1 {
-			end = len(data) // Last worker gets remaining data
-		}
-
-		go func(start, end int) {
-			defer wg.Done()
-			for i := start; i < end; i += 3 {
-
-				for _, fun := range funcs {
-					fun(data, i)
-				}
-				for _, f := range filters {
-					switch f {
-					case Inverse:
-						inverseColors(data, i)
-					case BlackWhite:
-						blackAndWhite(data, i)
-					case Sepia:
-						sepiaTone(data, i)
-					case Edge:
-						edgeDetection(data, i)
-					}
-				}
-			}
-		}(start, end)
-	}
-	wg.Wait()
-}
-
-func (v *Video) SetFrames(frames int64) *Video {
+// SetFrames sets the total number of frames in the video
+func (v *Video) SetFrames(frames uint64) *Video {
 	v.frames = frames
 	return v
 }
 
+// GetFrames returns the total number of frames in the video
 func (v *Video) GetFrames() int64 {
-	return v.frames
+	return int64(v.frames)
 }
 
+// SetFilename sets the video filename
 func (v *Video) SetFilename(filename string) *Video {
 	v.filename = filename
 	return v
 }
 
+// GetFilename returns the video filename
 func (v *Video) GetFilename() string {
 	return v.filename
 }
 
-func (v *Video) Codec(codec string) *Video {
+// Codec sets the video codec
+func (v *Video) Codec(codec Codec) *Video {
 	v.codec = codec
 	return v
 }
 
+// GetCodec returns the video codec
 func (v *Video) GetCodec() string {
-	return v.codec
+	return string(v.codec)
 }
 
-func (v *Video) Width(width int64) *Video {
+// Width sets the video width
+func (v *Video) Width(width uint64) *Video {
 	v.width = width
 	return v
 }
 
-func (v *Video) GetWidth() int64 {
+// GetWidth returns the video width
+func (v *Video) GetWidth() uint64 {
 	return v.width
 }
 
-func (v *Video) Height(height int64) *Video {
+// Height sets the video height
+func (v *Video) Height(height uint64) *Video {
 	v.height = height
 	return v
 }
 
-func (v *Video) GetHeight() int64 {
+// GetHeight returns the video height
+func (v *Video) GetHeight() uint64 {
 	return v.height
 }
 
+// Duration sets the video duration
 func (v *Video) Duration(duration float64) *Video {
 	v.duration = duration
 	return v
 }
 
+// GetDuration returns the video duration
 func (v *Video) GetDuration() float64 {
 	return v.duration
 }
 
+// SetFps sets the video frames per second
+func (v *Video) SetFps(fps uint64) *Video {
+	v.fps = fps
+	return v
+}
+
+// GetFps returns the video frames per second
+func (v *Video) GetFps() uint64 {
+	return v.fps
+}
+
+// BitRate sets the video bitrate
+func (v *Video) BitRate(bitRate string) *Video {
+	v.bitRate = bitRate
+	return v
+}
+
+// GetBitRate returns the video bitrate
+func (v *Video) GetBitRate() string {
+	return v.bitRate
+}
+
+// Preset sets the video preset
+func (v *Video) Preset(p preset) *Video {
+	v.preset = p
+	return v
+}
+
+// GetPreset returns the video preset
+func (v *Video) GetPreset() preset {
+	return v.preset
+}
+
+// WithMask sets whether the video has a mask
+func (v *Video) WithMask(withMask bool) *Video {
+	v.withMask = withMask
+	return v
+}
+
+// GetWithMask returns whether the video has a mask
+func (v *Video) GetWithMask() bool {
+	return v.withMask
+}
+
+// PixelFormat sets the video pixel format
+func (v *Video) PixelFormat(pixelFormat string) *Video {
+	v.pixelFormat = pixelFormat
+	return v
+}
+
+// GetPixelFormat returns the video pixel format
+func (v *Video) GetPixelFormat() string {
+	return v.pixelFormat
+}
+
+// SetStartTime sets the start time for subclip
+func (v *Video) SetStartTime(startTime float64) *Video {
+	v.startTime = startTime
+	return v
+}
+
+// GetStartTime returns the start time for subclip
+func (v *Video) GetStartTime() float64 {
+	return v.startTime
+}
+
+// SetEndTime sets the end time for subclip
+func (v *Video) SetEndTime(endTime float64) *Video {
+	v.endTime = endTime
+	return v
+}
+
+// GetEndTime returns the end time for subclip
+func (v *Video) GetEndTime() float64 {
+	return v.endTime
+}
+
+// ============================================================================
+// FFmpeg Configuration
+// ============================================================================
+
+// FfmpegArgs sets custom FFmpeg arguments
 func (v *Video) FfmpegArgs(ffmpegArgs map[string][]string) *Video {
 	v.ffmpegArgs = ffmpegArgs
 	return v
 }
 
+// GetFfmpegArgs returns the custom FFmpeg arguments
 func (v *Video) GetFfmpegArgs() map[string][]string {
 	return v.ffmpegArgs
 }
 
-func (v *Video) SetIsTemp(isTemp bool) *Video {
-	v.isTemp = isTemp
-	return v
-}
+// ============================================================================
+// Audio Properties
+// ============================================================================
 
-func (v *Video) GetIsTemp() bool {
-	return v.isTemp
-}
-
-func (v *Video) BitRate(bitRate int64) *Video {
-	v.bitRate = bitRate
-	return v
-}
-
-func (v *Video) GetBitRate() int64 {
-	return v.bitRate
-}
-
+// SetAudio sets the audio configuration
 func (v *Video) SetAudio(audio Audio) *Video {
 	v.audio = audio
 	return v
 }
 
+// GetAudio returns the audio configuration
 func (v *Video) GetAudio() *Audio {
 	return &v.audio
 }
 
-func (v *Video) SetFps(fps int16) *Video {
-	v.fps = fps
-	return v
-}
+// ============================================================================
+// Filter Configuration
+// ============================================================================
 
-func (v *Video) GetFps() int16 {
-	return v.fps
-}
-
+// AddFilter adds a built-in filter to the video processing pipeline
 func (v *Video) AddFilter(filter Filter) *Video {
 	v.filters = append(v.filters, filter)
 	return v
 }
 
+// AddCustomFilter adds a custom filter function to the video processing pipeline
 func (v *Video) AddCustomFilter(filterFunc func([]byte, int)) *Video {
 	v.customFilters = append(v.customFilters, filterFunc)
 	return v
+}
+
+// ============================================================================
+// Temporary File Management
+// ============================================================================
+
+// SetIsTemp marks whether this video is a temporary file
+func (v *Video) SetIsTemp(isTemp bool) *Video {
+	v.isTemp = isTemp
+	return v
+}
+
+// GetIsTemp returns whether this video is a temporary file
+func (v *Video) GetIsTemp() bool {
+	return v.isTemp
+}
+
+// HasAudio returns whether the video has an audio stream
+func (v *Video) HasAudio() bool {
+	return v.audio.codec != ""
+}
+
+
+// Subclip creates a new video segment with specified start and end times (lazy operation)
+// Parameters:
+//   - start: Start time in seconds (must be >= 0)
+//   - end: End time in seconds (must be > start and <= video duration)
+//
+// Returns a new Video object with updated metadata (no file is created until WriteVideo is called)
+func (v *Video) Subclip(start, end float64) *Video {
+	// Validate inputs
+	if start < 0 {
+		start = 0
+	}
+	if end > v.duration {
+		end = v.duration
+	}
+	if start >= end {
+		// Return empty video if invalid range
+		return &Video{}
+	}
+
+	// Create a new video with copied properties
+	newVideo := &Video{
+		filename:      v.filename,
+		codec:         v.codec,
+		width:         v.width,
+		height:        v.height,
+		fps:           v.fps,
+		duration:      end - start,
+		frames:        uint64(float64(v.fps) * (end - start)),
+		ffmpegArgs:    v.ffmpegArgs,
+		filters:       v.filters,
+		customFilters: v.customFilters,
+		isTemp:        v.isTemp,
+		audio:         v.audio,
+		bitRate:       v.bitRate,
+		preset:        v.preset,
+		withMask:      v.withMask,
+		pixelFormat:   v.pixelFormat,
+		startTime:     start,
+		endTime:       end,
+		textClips:     v.textClips,
+		subtitleClips: v.subtitleClips,
+		imageClips:    v.imageClips,
+		colorClips:    v.colorClips,
+	}
+
+	return newVideo
+}
+
+
+// AddText adds a text overlay to the video
+func (v *Video) AddText(textClip *TextClip) *Video {
+	v.textClips = append(v.textClips, textClip)
+	return v
+}
+
+// AddSubtitle adds a subtitle file to the video and returns the SubtitleClip for further configuration
+func (v *Video) AddSubtitle(subtitlePath string) *SubtitleClip {
+	subtitleClip := NewSubtitleClip(subtitlePath)
+	v.subtitleClips = append(v.subtitleClips, subtitleClip)
+	return subtitleClip
+}
+
+// AddSubtitleClip adds a pre-configured SubtitleClip to the video
+func (v *Video) AddSubtitleClip(subtitleClip *SubtitleClip) *Video {
+	v.subtitleClips = append(v.subtitleClips, subtitleClip)
+	return v
+}
+
+// RemoveText removes a text overlay at the specified index
+func (v *Video) RemoveText(index int) *Video {
+	if index >= 0 && index < len(v.textClips) {
+		v.textClips = append(v.textClips[:index], v.textClips[index+1:]...)
+	}
+	return v
+}
+
+// RemoveSubtitle removes a subtitle clip at the specified index
+func (v *Video) RemoveSubtitle(index int) *Video {
+	if index >= 0 && index < len(v.subtitleClips) {
+		v.subtitleClips = append(v.subtitleClips[:index], v.subtitleClips[index+1:]...)
+	}
+	return v
+}
+
+// ClearText removes all text overlays
+func (v *Video) ClearText() *Video {
+	v.textClips = []*TextClip{}
+	return v
+}
+
+// ClearSubtitles removes all subtitle clips
+func (v *Video) ClearSubtitles() *Video {
+	v.subtitleClips = []*SubtitleClip{}
+	return v
+}
+
+// GetTextClips returns all text overlays
+func (v *Video) GetTextClips() []*TextClip {
+	return v.textClips
+}
+
+// GetSubtitleClips returns all subtitle clips
+func (v *Video) GetSubtitleClips() []*SubtitleClip {
+	return v.subtitleClips
+}
+
+// HasText returns whether the video has any text overlays
+func (v *Video) HasText() bool {
+	return len(v.textClips) > 0
+}
+
+// HasSubtitles returns whether the video has any subtitle clips
+func (v *Video) HasSubtitles() bool {
+	return len(v.subtitleClips) > 0
+}
+
+// AddImageClip adds an image overlay to the video
+func (v *Video) AddImageClip(imageClip *ImageClip) *Video {
+	v.imageClips = append(v.imageClips, imageClip)
+	return v
+}
+
+// AddColorClip adds a color overlay to the video
+func (v *Video) AddColorClip(colorClip *ColorClip) *Video {
+	v.colorClips = append(v.colorClips, colorClip)
+	return v
+}
+
+// RemoveImageClip removes an image overlay at the specified index
+func (v *Video) RemoveImageClip(index int) *Video {
+	if index >= 0 && index < len(v.imageClips) {
+		v.imageClips = append(v.imageClips[:index], v.imageClips[index+1:]...)
+	}
+	return v
+}
+
+// RemoveColorClip removes a color overlay at the specified index
+func (v *Video) RemoveColorClip(index int) *Video {
+	if index >= 0 && index < len(v.colorClips) {
+		v.colorClips = append(v.colorClips[:index], v.colorClips[index+1:]...)
+	}
+	return v
+}
+
+// ClearImageClips removes all image overlays
+func (v *Video) ClearImageClips() *Video {
+	v.imageClips = []*ImageClip{}
+	return v
+}
+
+// ClearColorClips removes all color overlays
+func (v *Video) ClearColorClips() *Video {
+	v.colorClips = []*ColorClip{}
+	return v
+}
+
+// GetImageClips returns all image overlays
+func (v *Video) GetImageClips() []*ImageClip {
+	return v.imageClips
+}
+
+// GetColorClips returns all color overlays
+func (v *Video) GetColorClips() []*ColorClip {
+	return v.colorClips
+}
+
+// HasImageClips returns whether the video has any image overlays
+func (v *Video) HasImageClips() bool {
+	return len(v.imageClips) > 0
+}
+
+// HasColorClips returns whether the video has any color overlays
+func (v *Video) HasColorClips() bool {
+	return len(v.colorClips) > 0
 }
