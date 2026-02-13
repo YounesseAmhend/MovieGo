@@ -5,8 +5,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"strings"
 
 	"github.com/YounesseAmhend/MovieGo/utils"
 	"github.com/fatih/color"
@@ -69,18 +67,6 @@ func extractAudio(sourceVideo string, outputPath string, threads int16) error {
 	return nil
 }
 
-// isImageFile checks if a file is an image based on its extension
-func isImageFile(filename string) bool {
-	ext := strings.ToLower(filepath.Ext(filename))
-	imageExts := []string{".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tiff", ".tif"}
-	for _, imgExt := range imageExts {
-		if ext == imgExt {
-			return true
-		}
-	}
-	return false
-}
-
 // buildInputCommand creates the FFmpeg command to read frames from video
 func buildInputCommand(video *Video, threads uint16) (*exec.Cmd, error) {
 	// Validate video properties
@@ -96,33 +82,16 @@ func buildInputCommand(video *Video, threads uint16) (*exec.Cmd, error) {
 
 	args := []string{"-loglevel", "error"}
 
-	// Check if input is an image file (MoviePy-style handling)
-	isImage := isImageFile(video.GetFilename())
-	
-	if isImage {
-		// For images, loop for the specified duration (MoviePy-style)
-		// Ensure we have a valid duration
-		duration := video.GetDuration()
-		if duration <= 0 {
-			duration = 5.0 // Default duration if not set
-		}
-		
-		// Add loop and duration before input for images
-		args = append(args, "-loop", "1")
-		args = append(args, "-t", fmt.Sprintf("%.3f", duration))
-		args = append(args, "-framerate", fmt.Sprintf("%d", video.GetFps()))
-	}
-
-	// Add start time if specified (subclip) - only for video files
-	if !isImage && video.GetStartTime() > 0 {
+	// Add start time if specified (subclip)
+	if video.GetStartTime() > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.3f", video.GetStartTime()))
 	}
 
 	// Add input file
 	args = append(args, "-i", video.GetFilename())
 
-	// Add duration if end time is specified (subclip) - only for video files
-	if !isImage && video.GetEndTime() > 0 {
+	// Add duration if end time is specified (subclip)
+	if video.GetEndTime() > 0 {
 		duration := video.GetEndTime() - video.GetStartTime()
 		args = append(args, "-t", fmt.Sprintf("%.3f", duration))
 	}
@@ -158,7 +127,7 @@ func buildOutputCommand(video *Video, outputPath string, threads uint16) (*exec.
 	if presetValue == "" {
 		presetValue = Medium
 	}
-	
+
 	// Map preset to codec-appropriate value
 	presetStr := mapPresetForCodec(codec, string(presetValue))
 
@@ -229,24 +198,19 @@ func buildOutputCommand(video *Video, outputPath string, threads uint16) (*exec.
 				pixFmt = "rgba"
 			} else {
 				// Choose pixel format based on codec for optimal compatibility
-				// Use the already-selected codec variable, not video.GetCodec()
 				switch codec {
 				case "h264_amf", "hevc_amf":
-					// AMD AMF codecs prefer nv12 (YUV format)
 					pixFmt = "nv12"
 				case "h264_nvenc", "hevc_nvenc":
-					// NVIDIA NVENC also prefers nv12
 					pixFmt = "nv12"
 				case "h264_qsv", "hevc_qsv":
-					// Intel QSV works well with nv12
 					pixFmt = "nv12"
 				default:
-					// Software codecs and others support rgb24
 					pixFmt = "rgb24"
 				}
 			}
 		}
-		args = append(args, "-pix_fmt", pixFmt)
+		args = append(args, "-pix_fmt", string(pixFmt))
 	}
 
 	// Alpha mode for webm

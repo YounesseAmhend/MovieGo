@@ -5,40 +5,6 @@ import (
 	"runtime"
 )
 
-// ============================================================================
-// FFmpeg Filter Chain Utilities
-// ============================================================================
-//
-// This file provides centralized, cross-platform utilities for building
-// FFmpeg filter chains. It handles proper escaping of filter options that
-// works consistently on Windows, Linux, and macOS.
-//
-// Key Design Points:
-// - FFmpeg filter syntax is identical across all platforms
-// - The backslash escape (\:) is interpreted by FFmpeg's filter parser
-// - We use exec.Command() which passes args directly to FFmpeg (no shell)
-// - This eliminates OS-specific shell escaping differences
-
-// ============================================================================
-// Linear Interpolation Expression Builder
-// ============================================================================
-
-// linearExpr builds a linear interpolation expression for FFmpeg filters
-// This creates time-based animations that smoothly transition from one value to another
-//
-// Parameters:
-//   - tExpr: time expression (usually "t" or "(t-offset)")
-//   - start: animation start time in seconds
-//   - duration: animation duration in seconds
-//   - from: starting value
-//   - to: ending value
-//
-// Returns: FFmpeg expression string with clamping at boundaries
-//
-// Example: linearExpr("t", 0, 2, 100, 200) creates an expression that:
-//   - Returns 100 when t < 0
-//   - Returns 200 when t >= 2
-//   - Interpolates linearly between 100 and 200 when 0 <= t < 2
 func linearExpr(tExpr string, start, duration, from, to float64) string {
 	if duration <= 0 {
 		return fmt.Sprintf("%.3f", from)

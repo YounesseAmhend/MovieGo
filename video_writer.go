@@ -16,29 +16,8 @@ func (video *Video) WriteVideo(parms VideoParameters) error {
 		return fmt.Errorf("output path is empty, cannot write video")
 	}
 
-	// Check if this is a concatenated video (lazy concatenation)
-	if len(video.sourceVideos) > 0 {
-		// Handle concatenated video using filter_complex
-		return video.writeConcatenatedVideo(parms)
-	}
-
-	// Check if this is a composite video
-	if video.isComposited && video.compositeItems != nil && len(video.compositeItems) > 0 {
-		// Handle composite video using overlay filters
-		return video.writeCompositeVideo(parms)
-	}
-
-	// Check if this is a standalone ColorClip (no filename but has color clip with no overlay settings)
-	if video.GetFilename() == "" && video.HasColorClips() && len(video.GetColorClips()) == 1 {
-		colorClip := video.GetColorClips()[0]
-		// Check if it's a standalone color clip (no overlay position/timing)
-		if colorClip.x == 0 && colorClip.y == 0 && colorClip.startTime == 0 && !colorClip.isOverlay {
-			return video.writeStandaloneColorClip(parms, colorClip)
-		}
-	}
-
-	// Check if video has text overlays, subtitles, image clips, or color clips - use FFmpeg filter approach
-	if video.HasText() || video.HasSubtitles() || video.HasImageClips() || video.HasColorClips() {
+	// Check if video has text overlays or subtitles - use FFmpeg filter approach
+	if video.HasText() || video.HasSubtitles() {
 		return video.writeVideoWithTextFilters(parms)
 	}
 
@@ -113,89 +92,10 @@ func (video *Video) WriteVideo(parms VideoParameters) error {
 		return err
 	}
 
-	fmt.Printf("%s %s %s\n", 
-		color.GreenString("Video processing complete:"), 
-		color.MagentaString(parms.OutputPath), 
+	fmt.Printf("%s %s %s\n",
+		color.GreenString("Video processing complete:"),
+		color.MagentaString(parms.OutputPath),
 		color.GreenString("(with audio)"))
-	return nil
-}
-
-// writeConcatenatedVideo handles writing a concatenated video using filter_complex
-func (video *Video) writeConcatenatedVideo(parms VideoParameters) error {
-	// Use the existing concatenateWithFilterComplex function
-	if err := concatenateWithFilterComplex(video.sourceVideos, parms.OutputPath, parms); err != nil {
-		return fmt.Errorf("failed to write concatenated video: %w", err)
-	}
-
-	fmt.Printf("%s %s\n", 
-		color.GreenString("Concatenated video written successfully:"), 
-		color.MagentaString(parms.OutputPath))
-	return nil
-}
-
-// writeStandaloneColorClip handles writing a standalone ColorClip video using FFmpeg color filter
-func (video *Video) writeStandaloneColorClip(parms VideoParameters, colorClip *ColorClip) error {
-	// Build FFmpeg command
-	args := []string{"-loglevel", "error"}
-
-	// Normalize color
-	colorValue := normalizeColor(colorClip.color)
-
-	// Use color filter as input
-	colorFilter := fmt.Sprintf("color=c=%s:s=%dx%d:r=%d:d=%.3f",
-		colorValue, video.GetWidth(), video.GetHeight(), video.GetFps(), video.GetDuration())
-	args = append(args, "-f", "lavfi", "-i", colorFilter)
-
-	// Map video stream
-	args = append(args, "-map", "0:v")
-
-	// Apply encoding parameters
-	selectedCodec := resolveCodec(string(parms.Codec), video.GetCodec())
-	args = append(args, "-c:v", selectedCodec)
-
-	// Map preset for the selected codec
-	selectedPreset := mapPresetForCodec(selectedCodec, resolvePreset(parms.Preset, video.GetPreset()))
-	if selectedPreset != "" {
-		args = append(args, "-preset", selectedPreset)
-	}
-
-	if bitrate := resolveBitrate(parms.Bitrate, video.GetBitRate()); bitrate != "" {
-		args = append(args, "-b:v", bitrate)
-	}
-
-	if fps := resolveFps(parms.Fps, video.GetFps()); fps > 0 {
-		args = append(args, "-r", fmt.Sprintf("%d", fps))
-	}
-
-	if parms.PixelFormat != "" {
-		args = append(args, "-pix_fmt", parms.PixelFormat)
-	} else if video.GetPixelFormat() != "" {
-		args = append(args, "-pix_fmt", video.GetPixelFormat())
-	}
-
-	if parms.Threads != 0 {
-		args = append(args, "-threads", fmt.Sprintf("%d", parms.Threads))
-	}
-
-	// Output
-	args = append(args, "-y", parms.OutputPath)
-
-	// Use progress parser for standalone color clip
-	config := FFmpegProgressConfig{
-		Args:          args,
-		TotalDuration: video.GetDuration(),
-		OperationName: "Processing color clip",
-		OutputPath:    parms.OutputPath,
-		Bitrate:       resolveBitrate(parms.Bitrate, video.GetBitRate()),
-	}
-
-	if err := runFFmpegWithProgress(config); err != nil {
-		return fmt.Errorf("ffmpeg standalone color clip processing failed: %w", err)
-	}
-
-	fmt.Printf("%s %s\n",
-		color.GreenString("Standalone color clip written successfully:"),
-		color.MagentaString(parms.OutputPath))
 	return nil
 }
 
@@ -301,7 +201,7 @@ func validateFilterPart(filterPart string) bool {
 	return hasFilterOps
 }
 
-// writeVideoWithTextFilters writes a video with text overlays, subtitles, image clips, and/or color clips using FFmpeg filters
+// writeVideoWithTextFilters writes a video with text overlays and/or subtitles using FFmpeg filters
 func (video *Video) writeVideoWithTextFilters(parms VideoParameters) error {
 	// Build FFmpeg command with filter_complex for overlays
 	args := []string{"-loglevel", "error"}
@@ -309,26 +209,10 @@ func (video *Video) writeVideoWithTextFilters(parms VideoParameters) error {
 	// Input file
 	args = append(args, "-i", video.GetFilename())
 
-	// Track input index for image overlays
-	inputIndex := 1
-
 	// Calculate video duration
 	videoDuration := video.GetDuration()
 	if videoDuration <= 0 {
 		videoDuration = 10.0
-	}
-
-	// Image clips - add as loop inputs
-	imageClipToInput := make(map[*ImageClip]int)
-	if video.HasImageClips() {
-		for _, imageClip := range video.GetImageClips() {
-			if imageClip.imagePath != "" {
-				// Add image as loop input
-				args = append(args, "-loop", "1", "-t", fmt.Sprintf("%.3f", videoDuration), "-i", imageClip.imagePath)
-				imageClipToInput[imageClip] = inputIndex
-				inputIndex++
-			}
-		}
 	}
 
 	// Build filter chain
@@ -350,24 +234,12 @@ func (video *Video) writeVideoWithTextFilters(parms VideoParameters) error {
 		}
 	}
 
-	// Apply existing video filters if any
-	if len(video.filters) > 0 {
-		filterString := translateFiltersToFFmpeg(video.filters)
-		if filterString != "" {
-			filterPart := fmt.Sprintf("[%s]%s[filtered]", currentLabel, filterString)
-			if validateFilterPart(filterPart) {
-				filterParts = append(filterParts, filterPart)
-				currentLabel = "filtered"
-			}
-		}
-	}
-
 	// Collect all overlay clips and sort by layer
 	type overlayItem struct {
-		layer     int
-		clipType  string // "text", "image", "color", "subtitle"
-		index     int
-		clip      interface{}
+		layer    int
+		clipType string // "text", "subtitle"
+		index    int
+		clip     interface{}
 	}
 	var overlays []overlayItem
 
@@ -379,30 +251,6 @@ func (video *Video) writeVideoWithTextFilters(parms VideoParameters) error {
 				clipType: "text",
 				index:    i,
 				clip:     textClip,
-			})
-		}
-	}
-
-	// Add image clips
-	if video.HasImageClips() {
-		for i, imageClip := range video.GetImageClips() {
-			overlays = append(overlays, overlayItem{
-				layer:    imageClip.GetLayer(),
-				clipType: "image",
-				index:    i,
-				clip:     imageClip,
-			})
-		}
-	}
-
-	// Add color clips
-	if video.HasColorClips() {
-		for i, colorClip := range video.GetColorClips() {
-			overlays = append(overlays, overlayItem{
-				layer:    colorClip.GetLayer(),
-				clipType: "color",
-				index:    i,
-				clip:     colorClip,
 			})
 		}
 	}
@@ -470,57 +318,6 @@ func (video *Video) writeVideoWithTextFilters(parms VideoParameters) error {
 				}
 			}
 
-		case "image":
-			imageClip := overlay.clip.(*ImageClip)
-			if imageClip.imagePath != "" {
-				if inputIdx, exists := imageClipToInput[imageClip]; exists {
-					imageFilter, err := buildImageOverlayFilterString(imageClip, video.GetWidth(), video.GetHeight(), video.GetDuration())
-					if err != nil {
-						continue
-					}
-					if imageFilter == "" {
-						continue
-					}
-					imageInputLabel := fmt.Sprintf("%d:v", inputIdx)
-					imageFilter = strings.ReplaceAll(imageFilter, "[1:v]", "["+imageInputLabel+"]")
-					imageFilter = strings.ReplaceAll(imageFilter, "[0:v]", "["+currentLabel+"]")
-					imgLabel := fmt.Sprintf("img%d", i)
-					imageFilter = strings.ReplaceAll(imageFilter, "[img]", "["+imgLabel+"]")
-					imageFilter += "[" + nextLabel + "]"
-					
-					parts := strings.Split(imageFilter, ";")
-					allPartsValid := true
-					for _, part := range parts {
-						part = strings.TrimSpace(part)
-						if part != "" && !validateFilterPart(part) {
-							allPartsValid = false
-							break
-						}
-					}
-					
-					if allPartsValid && strings.TrimSpace(imageFilter) != "" {
-						filterParts = append(filterParts, imageFilter)
-						currentLabel = nextLabel
-						hasOverlayFilters = true
-					}
-				}
-			}
-
-		case "color":
-			colorClip := overlay.clip.(*ColorClip)
-			colorFilter := buildColorOverlayFilterString(colorClip, video.GetWidth(), video.GetHeight(), video.GetDuration())
-			if colorFilter != "" {
-				colorFilter = strings.ReplaceAll(colorFilter, "[0:v]", "["+currentLabel+"]")
-				colorLabel := fmt.Sprintf("color%d", i)
-				colorFilter = strings.ReplaceAll(colorFilter, "[color]", "["+colorLabel+"]")
-				colorFilter += "[" + nextLabel + "]"
-				if validateFilterPart(colorFilter) {
-					filterParts = append(filterParts, colorFilter)
-					currentLabel = nextLabel
-					hasOverlayFilters = true
-				}
-			}
-
 		case "subtitle":
 			subtitleClip := overlay.clip.(*SubtitleClip)
 			subtitleFilter, err := buildSubtitleFilterString(subtitleClip)
@@ -547,17 +344,15 @@ func (video *Video) writeVideoWithTextFilters(parms VideoParameters) error {
 			validFilterParts = append(validFilterParts, part)
 		}
 	}
-	
+
 	if len(validFilterParts) > 0 {
 		filterComplex := strings.Join(validFilterParts, ";")
 		// Remove any empty segments that might have been created by joining
-		// This handles cases where filter parts might have been malformed
 		filterComplex = strings.ReplaceAll(filterComplex, ";;", ";")
 		filterComplex = strings.Trim(filterComplex, ";")
 		filterComplex = strings.TrimSpace(filterComplex)
-		
+
 		// Final validation: ensure filter_complex contains actual filter operations
-		// Check that it's not empty and validate each part individually
 		if filterComplex != "" && filterComplex != ";" {
 			// Split by semicolon and validate each part
 			parts := strings.Split(filterComplex, ";")
@@ -568,33 +363,26 @@ func (video *Video) writeVideoWithTextFilters(parms VideoParameters) error {
 					validParts = append(validParts, part)
 				}
 			}
-			
+
 			// Rejoin only valid parts
 			if len(validParts) > 0 {
 				filterComplex = strings.Join(validParts, ";")
-				// Final safety check: ensure we're not passing an empty string
 				if strings.TrimSpace(filterComplex) != "" {
 					args = append(args, "-filter_complex", filterComplex)
-					// Only map [outv] if we actually have overlay filters that created it
 					if hasOverlayFilters && currentLabel == "outv" {
 						args = append(args, "-map", "[outv]")
 					} else if currentLabel != "0:v" {
-						// Map the current label if it's not the default input (could be trimmed, filtered, or overlay label)
 						args = append(args, "-map", "["+currentLabel+"]")
 					} else {
-						// Fall back to direct input mapping
 						args = append(args, "-map", "0:v")
 					}
 				} else {
-					// Filter complex became empty after validation, fall back to direct mapping
 					args = append(args, "-map", "0:v")
 				}
 			} else {
-				// No valid parts after validation, fall back to direct mapping
 				args = append(args, "-map", "0:v")
 			}
 		} else {
-			// Filter complex is empty or invalid, fall back to direct mapping
 			args = append(args, "-map", "0:v")
 		}
 	} else {
@@ -625,9 +413,9 @@ func (video *Video) writeVideoWithTextFilters(parms VideoParameters) error {
 	}
 
 	if parms.PixelFormat != "" {
-		args = append(args, "-pix_fmt", parms.PixelFormat)
+		args = append(args, "-pix_fmt", string(parms.PixelFormat))
 	} else if video.GetPixelFormat() != "" {
-		args = append(args, "-pix_fmt", video.GetPixelFormat())
+		args = append(args, "-pix_fmt", string(video.GetPixelFormat()))
 	}
 
 	if parms.Threads != 0 {
@@ -643,14 +431,11 @@ func (video *Video) writeVideoWithTextFilters(parms VideoParameters) error {
 	args = append(args, "-y", parms.OutputPath)
 
 	// Final safety check: ensure we never pass an empty filter_complex
-	// This is a last resort check to prevent the "No such filter: ''" error
 	for i, arg := range args {
 		if arg == "-filter_complex" && i+1 < len(args) {
 			filterValue := args[i+1]
 			if strings.TrimSpace(filterValue) == "" || filterValue == ";" {
-				// Remove the empty filter_complex and its value
 				args = append(args[:i], args[i+2:]...)
-				// Ensure we have a video mapping
 				hasMap := false
 				for _, a := range args {
 					if a == "-map" {
@@ -684,4 +469,3 @@ func (video *Video) writeVideoWithTextFilters(parms VideoParameters) error {
 		color.MagentaString(parms.OutputPath))
 	return nil
 }
-

@@ -1,32 +1,33 @@
 package moviego
 
+import (
+	"crypto/sha256"
+	"fmt"
+)
+
 // Video represents a video file with its properties and processing options
 type Video struct {
-	filename       string
-	codec          Codec
-	width          uint64
-	height         uint64
-	fps            uint64
-	duration       float64
-	frames         uint64
-	ffmpegArgs     map[string][]string
-	filters        []Filter
-	customFilters  []func([]byte, int)
-	isTemp         bool
-	audio          Audio
-	bitRate        string
-	preset         preset
-	withMask       bool
-	pixelFormat    string
-	startTime      float64              // Start time for subclip in seconds
-	endTime        float64              // End time for subclip in seconds
-	sourceVideos   []*Video             // Source videos for concatenation (nil if not a concatenated video)
-	isComposited   bool                 // Flag to identify composite videos
-	compositeItems []*CompositeClipItem // Clips to composite (nil if not a composite video)
-	textClips      []*TextClip          // Text overlays to render on the video
-	subtitleClips  []*SubtitleClip      // Subtitle files to burn into the video
-	imageClips     []*ImageClip         // Image overlays to render on the video
-	colorClips      []*ColorClip         // Color overlays to render on the video
+	filename      string
+	codec         Codec
+	width         uint64
+	height        uint64
+	fps           uint64
+	duration      float64
+	hash          string
+	frames        uint64
+	ffmpegArgs    map[string][]string
+	filters       []Filter
+	customFilters []func([]byte, int)
+	isTemp        bool
+	audio         Audio
+	bitRate       string
+	preset        preset
+	withMask      bool
+	pixelFormat   PixelFormat
+	startTime     float64
+	endTime       float64
+	textClips     []*TextClip
+	subtitleClips []*SubtitleClip
 }
 
 // VideoParameters holds configuration for video processing
@@ -71,17 +72,17 @@ type VideoParameters struct {
 	Preset      preset
 	WithMask    bool
 	Bitrate     string
-	PixelFormat string
+	PixelFormat PixelFormat
 }
 
-type pixelFormat string
+type PixelFormat string
 
 const (
-	PixelFormatRGBA    pixelFormat = "rgba"
-	PixelFormatRGB     pixelFormat = "rgb"
-	PixelFormatYUV420P pixelFormat = "yuv420p"
-	PixelFormatYUV422P pixelFormat = "yuv422p"
-	PixelFormatYUV444P pixelFormat = "yuv444p"
+	PixelFormatRGBA    PixelFormat = "rgba"
+	PixelFormatRGB     PixelFormat = "rgb"
+	PixelFormatYUV420P PixelFormat = "yuv420p"
+	PixelFormatYUV422P PixelFormat = "yuv422p"
+	PixelFormatYUV444P PixelFormat = "yuv444p"
 )
 
 type Codec string
@@ -216,6 +217,10 @@ func (v *Video) SetFps(fps uint64) *Video {
 	return v
 }
 
+func (v *Video) GetHash() string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(v.filename)))
+}
+
 // GetFps returns the video frames per second
 func (v *Video) GetFps() uint64 {
 	return v.fps
@@ -255,13 +260,13 @@ func (v *Video) GetWithMask() bool {
 }
 
 // PixelFormat sets the video pixel format
-func (v *Video) PixelFormat(pixelFormat string) *Video {
+func (v *Video) PixelFormat(pixelFormat PixelFormat) *Video {
 	v.pixelFormat = pixelFormat
 	return v
 }
 
 // GetPixelFormat returns the video pixel format
-func (v *Video) GetPixelFormat() string {
+func (v *Video) GetPixelFormat() PixelFormat {
 	return v.pixelFormat
 }
 
@@ -353,7 +358,6 @@ func (v *Video) HasAudio() bool {
 	return v.audio.codec != ""
 }
 
-
 // Subclip creates a new video segment with specified start and end times (lazy operation)
 // Parameters:
 //   - start: Start time in seconds (must be >= 0)
@@ -395,13 +399,10 @@ func (v *Video) Subclip(start, end float64) *Video {
 		endTime:       end,
 		textClips:     v.textClips,
 		subtitleClips: v.subtitleClips,
-		imageClips:    v.imageClips,
-		colorClips:    v.colorClips,
 	}
 
 	return newVideo
 }
-
 
 // AddText adds a text overlay to the video
 func (v *Video) AddText(textClip *TextClip) *Video {
@@ -468,64 +469,4 @@ func (v *Video) HasText() bool {
 // HasSubtitles returns whether the video has any subtitle clips
 func (v *Video) HasSubtitles() bool {
 	return len(v.subtitleClips) > 0
-}
-
-// AddImageClip adds an image overlay to the video
-func (v *Video) AddImageClip(imageClip *ImageClip) *Video {
-	v.imageClips = append(v.imageClips, imageClip)
-	return v
-}
-
-// AddColorClip adds a color overlay to the video
-func (v *Video) AddColorClip(colorClip *ColorClip) *Video {
-	v.colorClips = append(v.colorClips, colorClip)
-	return v
-}
-
-// RemoveImageClip removes an image overlay at the specified index
-func (v *Video) RemoveImageClip(index int) *Video {
-	if index >= 0 && index < len(v.imageClips) {
-		v.imageClips = append(v.imageClips[:index], v.imageClips[index+1:]...)
-	}
-	return v
-}
-
-// RemoveColorClip removes a color overlay at the specified index
-func (v *Video) RemoveColorClip(index int) *Video {
-	if index >= 0 && index < len(v.colorClips) {
-		v.colorClips = append(v.colorClips[:index], v.colorClips[index+1:]...)
-	}
-	return v
-}
-
-// ClearImageClips removes all image overlays
-func (v *Video) ClearImageClips() *Video {
-	v.imageClips = []*ImageClip{}
-	return v
-}
-
-// ClearColorClips removes all color overlays
-func (v *Video) ClearColorClips() *Video {
-	v.colorClips = []*ColorClip{}
-	return v
-}
-
-// GetImageClips returns all image overlays
-func (v *Video) GetImageClips() []*ImageClip {
-	return v.imageClips
-}
-
-// GetColorClips returns all color overlays
-func (v *Video) GetColorClips() []*ColorClip {
-	return v.colorClips
-}
-
-// HasImageClips returns whether the video has any image overlays
-func (v *Video) HasImageClips() bool {
-	return len(v.imageClips) > 0
-}
-
-// HasColorClips returns whether the video has any color overlays
-func (v *Video) HasColorClips() bool {
-	return len(v.colorClips) > 0
 }
