@@ -14,7 +14,11 @@ func NewVideoFile(filename string) (*Video, error) {
 		return nil, fmt.Errorf("filename cannot be empty")
 	}
 
-	cmd := exec.Command("ffprobe", "-v", "error", "-show_format", "-show_streams", filename, "-of", "json")
+	ffprobePath, err := getFFprobePath()
+	if err != nil {
+		return nil, fmt.Errorf("failed to probe video file path not found'%s': %w", filename, err)
+	}
+	cmd := exec.Command(ffprobePath, "-v", "error", "-show_format", "-show_streams", filename, "-of", "json")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to probe video file '%s': %w", filename, err)

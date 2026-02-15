@@ -99,7 +99,11 @@ func runFFmpegWithProgress(config FFmpegProgressConfig) error {
 	}
 
 	// Build command
-	cmd := exec.Command("ffmpeg", args...)
+	ffmpegPath, err := getFFmpegPath()
+	if err != nil {
+		return fmt.Errorf("could not find ffmpeg: %w", err)
+	}
+	cmd := exec.Command(ffmpegPath, args...)
 
 	// Capture stderr for progress parsing and error output
 	stderrPipe, err := cmd.StderrPipe()

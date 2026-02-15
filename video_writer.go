@@ -2,6 +2,7 @@ package moviego
 
 import (
 	"fmt"
+	"os/exec"
 	"regexp"
 	"runtime"
 	"sort"
@@ -14,11 +15,6 @@ import (
 func (video *Video) WriteVideo(parms VideoParameters) error {
 	if parms.OutputPath == "" {
 		return fmt.Errorf("output path is empty, cannot write video")
-	}
-
-	// Check if video has text overlays or subtitles - use FFmpeg filter approach
-	if video.HasText() || video.HasSubtitles() {
-		return video.writeVideoWithTextFilters(parms)
 	}
 
 	// Validate essential video properties before processing
@@ -70,32 +66,21 @@ func (video *Video) WriteVideo(parms VideoParameters) error {
 		return fmt.Errorf("video FPS is invalid (%d), cannot process video", video.GetFps())
 	}
 
-	// Create temporary files for processing
-	tempFiles, err := createTempFiles()
+	ffmpegPath, err := getFFmpegPath()
 	if err != nil {
-		return err
-	}
-	defer tempFiles.Cleanup()
-
-	// Process video frames
-	if err := video.processVideoFrames(ProcessVideoFramesParams{
-		OutputPath: tempFiles.VideoPath,
-		Threads:    parms.Threads,
-	}); err != nil {
-		return err
+		return fmt.Errorf("failed to get ffmpeg path: %w", err)
 	}
 
-	fmt.Printf("\n%s Now combining with audio...\n", color.CyanString("Video processing complete."))
+	start := fmt.Sprintf("%f", video.startTime)
+	end := fmt.Sprintf("%f", video.endTime)
 
-	// Combine processed video with original audio
-	if err := combineAudioVideo(video, tempFiles.VideoPath, parms.OutputPath); err != nil {
-		return err
+	cmd := exec.Command(ffmpegPath, "-i", video.GetFilename(), "-ss", start, "-to", end, parms.OutputPath)
+	logger.Info("ffmpeg command", "cmd", cmd.String())
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to execute ffmpeg: %w", err)
 	}
 
-	fmt.Printf("%s %s %s\n",
-		color.GreenString("Video processing complete:"),
-		color.MagentaString(parms.OutputPath),
-		color.GreenString("(with audio)"))
 	return nil
 }
 
@@ -133,16 +118,12 @@ func (video *Video) processVideoFrames(params ProcessVideoFramesParams) error {
 		return fmt.Errorf("failed to start output FFmpeg process: %w", err)
 	}
 
-	// Compose filters once before processing
-	composedFilter := composeFilters(video.customFilters, video.filters)
-
 	// Process all frames
 	config := FrameProcessorConfig{
 		Video:          video,
 		InputReader:    pipes.InputStdout,
 		OutputWriter:   pipes.OutputStdin,
 		TotalFrames:    video.GetFrames(),
-		ComposedFilter: composedFilter,
 	}
 
 	if err := processFrameLoop(config); err != nil {

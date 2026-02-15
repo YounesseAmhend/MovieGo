@@ -3,6 +3,7 @@ package moviego
 import (
 	"crypto/sha256"
 	"fmt"
+	"strings"
 )
 
 // Video represents a video file with its properties and processing options
@@ -17,7 +18,7 @@ type Video struct {
 	frames        uint64
 	ffmpegArgs    map[string][]string
 	filters       []Filter
-	customFilters []func([]byte, int)
+	filterComplex string
 	isTemp        bool
 	audio         Audio
 	bitRate       string
@@ -217,8 +218,35 @@ func (v *Video) SetFps(fps uint64) *Video {
 	return v
 }
 
-func (v *Video) GetHash() string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(v.filename)))
+func (v *Video) HashCode() string {
+	// Generate raw hash
+	hash := sha256.Sum256([]byte(v.filename))
+	raw := fmt.Sprintf("%x_%f_%f", hash, v.startTime, v.endTime)
+	
+	// Replace FFmpeg-reserved characters with safe alternatives
+	// : is used for filter parameter separation
+	// . is used for decimal points in filters (can cause issues in labels)
+	// + and - can be ambiguous
+	safe := strings.NewReplacer(
+		":", "_",  // colon → underscore
+		".", "p",  // dot → p (for "point")
+		"+", "P",  // plus → P
+		"-", "N",  // minus → N
+	).Replace(raw)
+	
+	return "cut_" + safe // prefix to ensure starts with letter
+}
+
+func (v *Video) fileHashCode() string {
+	raw := fmt.Sprintf("%x", sha256.Sum256([]byte(v.filename)))
+		safe := strings.NewReplacer(
+		":", "_",  // colon → underscore
+		".", "p",  // dot → p (for "point")
+		"+", "P",  // plus → P
+		"-", "N",  // minus → N
+	).Replace(raw)
+	
+	return safe 
 }
 
 // GetFps returns the video frames per second
@@ -332,12 +360,6 @@ func (v *Video) AddFilter(filter Filter) *Video {
 	return v
 }
 
-// AddCustomFilter adds a custom filter function to the video processing pipeline
-func (v *Video) AddCustomFilter(filterFunc func([]byte, int)) *Video {
-	v.customFilters = append(v.customFilters, filterFunc)
-	return v
-}
-
 // ============================================================================
 // Temporary File Management
 // ============================================================================
@@ -356,52 +378,6 @@ func (v *Video) GetIsTemp() bool {
 // HasAudio returns whether the video has an audio stream
 func (v *Video) HasAudio() bool {
 	return v.audio.codec != ""
-}
-
-// Subclip creates a new video segment with specified start and end times (lazy operation)
-// Parameters:
-//   - start: Start time in seconds (must be >= 0)
-//   - end: End time in seconds (must be > start and <= video duration)
-//
-// Returns a new Video object with updated metadata (no file is created until WriteVideo is called)
-func (v *Video) Subclip(start, end float64) *Video {
-	// Validate inputs
-	if start < 0 {
-		start = 0
-	}
-	if end > v.duration {
-		end = v.duration
-	}
-	if start >= end {
-		// Return empty video if invalid range
-		return &Video{}
-	}
-
-	// Create a new video with copied properties
-	newVideo := &Video{
-		filename:      v.filename,
-		codec:         v.codec,
-		width:         v.width,
-		height:        v.height,
-		fps:           v.fps,
-		duration:      end - start,
-		frames:        uint64(float64(v.fps) * (end - start)),
-		ffmpegArgs:    v.ffmpegArgs,
-		filters:       v.filters,
-		customFilters: v.customFilters,
-		isTemp:        v.isTemp,
-		audio:         v.audio,
-		bitRate:       v.bitRate,
-		preset:        v.preset,
-		withMask:      v.withMask,
-		pixelFormat:   v.pixelFormat,
-		startTime:     start,
-		endTime:       end,
-		textClips:     v.textClips,
-		subtitleClips: v.subtitleClips,
-	}
-
-	return newVideo
 }
 
 // AddText adds a text overlay to the video

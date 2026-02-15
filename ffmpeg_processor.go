@@ -51,7 +51,11 @@ func (tf *TempFiles) Cleanup() {
 
 // extractAudio extracts audio from the source video
 func extractAudio(sourceVideo string, outputPath string, threads int16) error {
-	audioCmd := exec.Command("ffmpeg",
+	ffmpegPath, err := getFFmpegPath()
+	if err != nil {
+		return fmt.Errorf("could not find ffmpeg: %w", err)
+	}
+	audioCmd := exec.Command(ffmpegPath,
 		"-loglevel", "error",
 		"-i", sourceVideo,
 		"-vn", // No video
@@ -105,7 +109,11 @@ func buildInputCommand(video *Video, threads uint16) (*exec.Cmd, error) {
 		"-",
 	)
 
-	return exec.Command("ffmpeg", args...), nil
+	ffmpegPath, err := getFFmpegPath()
+	if err != nil {
+		return nil, fmt.Errorf("could not find ffmpeg: %w", err)
+	}
+	return exec.Command(ffmpegPath, args...), nil
 }
 
 // buildOutputCommand creates the FFmpeg command to encode raw frames
@@ -221,7 +229,11 @@ func buildOutputCommand(video *Video, outputPath string, threads uint16) (*exec.
 	// Overwrite and output path
 	args = append(args, "-y", outputPath)
 
-	return exec.Command("ffmpeg", args...), nil
+	ffmpegPath, err := getFFmpegPath()
+	if err != nil {
+		return nil, fmt.Errorf("could not find ffmpeg: %w", err)
+	}
+	return exec.Command(ffmpegPath, args...), nil
 }
 
 // PipeSetup holds the pipes for input and output FFmpeg processes

@@ -205,7 +205,11 @@ func detectGPUMacOS() gpuVendor {
 
 // getAvailableEncoders queries FFmpeg for available encoders
 func getAvailableEncoders() map[string]bool {
-	cmd := exec.Command("ffmpeg", "-hide_banner", "-encoders")
+	ffmpegPath, err := getFFmpegPath()
+	if err != nil {
+		return make(map[string]bool)
+	}
+	cmd := exec.Command(ffmpegPath, "-hide_banner", "-encoders")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return make(map[string]bool)
