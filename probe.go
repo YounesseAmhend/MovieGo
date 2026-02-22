@@ -30,13 +30,13 @@ func NewVideoFile(filename string) (*Video, error) {
 	}
 
 	video := &Video{
-		filename:   filename,
+		filenames:   []string{filename},
 		ffmpegArgs: make(map[string][]string),
 	}
 
 	if format, ok := result["format"].(map[string]interface{}); ok {
 		if filename, ok := format["filename"].(string); ok {
-			video.SetFilename(filename)
+			video.SetFilename([]string{filename})
 		}
 	}
 

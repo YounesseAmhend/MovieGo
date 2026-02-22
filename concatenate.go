@@ -27,16 +27,17 @@ func Concatenate(videos []Video, outputPath string) (*Video, error) {
 	counter := 0
 
 	for _, video := range videos {
-		_, ok := filenamesCount[video.filename]
+		filename := video.filenames[0]
+		_, ok := filenamesCount[filename]
 		if ok {
-			filenamesCount[video.filename]++
+			filenamesCount[filename]++
 			continue
 		}
-		filenamesOrder[video.filename] = counter
-		filenamesHashs[video.filename] = video.fileHashCode()
+		filenamesOrder[filename] = counter
+		filenamesHashs[filename] = video.fileHashCode(filename)
 		counter++
-		args = append(args, "-i", video.filename)
-		filenamesCount[video.filename] = 0
+		args = append(args, "-i", filename)
+		filenamesCount[filename] = 0
 	}
 
 	var parts []string
@@ -59,23 +60,26 @@ func Concatenate(videos []Video, outputPath string) (*Video, error) {
 	}
 
 	for _, video := range videos {
-		index, _ := filenamesCount[video.filename]
-		filenamesCount[video.filename]--
+		filename := video.filenames[0]
+		index, _ := filenamesCount[filename]
+		filenamesCount[filename]--
 		parts = append(parts, fmt.Sprintf(
 			"[v_%s_%d]trim=start=%f:end=%f,setpts=PTS-STARTPTS[%s]",
-			filenamesHashs[video.filename], index, video.startTime, video.endTime, video.HashCode()+"_v"))
+			filenamesHashs[filename], index, video.startTime, video.endTime, video.HashCode(filename)+"_v"))
 		parts = append(parts, fmt.Sprintf(
 			"[a_%s_%d]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[%s]",
-			filenamesHashs[video.filename], index, video.startTime, video.endTime, video.HashCode()+"_a"))
+			filenamesHashs[filename], index, video.startTime, video.endTime, video.HashCode(filename)+"_a"))
 	}
 
 	concatInputs := ""
 	for _, video := range videos {
-		concatInputs += fmt.Sprintf("[%s] [%s] ", video.HashCode()+"_v", video.HashCode()+"_a")
+		filename := video.filenames[0]
+		concatInputs += fmt.Sprintf("[%s] [%s] ", video.HashCode(filename)+"_v", video.HashCode(filename)+"_a")
 	}
 	parts = append(parts, strings.TrimSpace(concatInputs)+fmt.Sprintf(" concat=n=%d:v=1:a=1[outv][outa]", len(videos)))
 
 	filterComplex := strings.Join(parts, "; ")
+
 	args = append(args, "-filter_complex", filterComplex, "-map", "[outv]", "-map", "[outa]", "-y", outputPath)
 
 	cmd := exec.Command(path, args[1:]...)
@@ -87,5 +91,37 @@ func Concatenate(videos []Video, outputPath string) (*Video, error) {
 		return nil, fmt.Errorf("failed to concatenate videos: %w (ffmpeg: %s)", err, stderr.String())
 	}
 
-	return NewVideoFile(outputPath)
+	filenames := make([]string, len(filenamesOrder))
+
+	for filename, index := range filenamesOrder {
+		filenames[index] = filename
+	}
+
+	duration := 0.0
+	for _, video := range videos {
+		duration += video.endTime - video.startTime
+	}
+
+	return &Video{
+		filenames:     filenames,
+		// filterComplex: filterComplex,
+		startTime:     0,
+		endTime:       duration,
+		duration:      duration,
+		codec:         videos[0].codec,
+		width:         videos[0].width,
+		height:        videos[0].height,
+		fps:           videos[0].fps,
+		frames:        uint64(float64(videos[0].fps) * duration),
+		ffmpegArgs:    videos[0].ffmpegArgs,
+		filters:       videos[0].filters,
+		isTemp:        false,
+		audio:         videos[0].audio,
+		bitRate:       videos[0].bitRate,
+		preset:        videos[0].preset,
+		withMask:      videos[0].withMask,
+		pixelFormat:   videos[0].pixelFormat,
+		textClips:     videos[0].textClips,
+		subtitleClips: videos[0].subtitleClips,
+	}, nil
 }

@@ -13,11 +13,19 @@ func TestConcatenate(t *testing.T) {
 		t.Fatalf("Failed to create video file: %v", err)
 	}
 
-	cut1, err := video1.Cut(0, 3)
+	const startTimeCut1 = 0
+	const endTimeCut1 = 2
+
+	const startTimeCut2 = 2
+	const endTimeCut2 = 3
+
+	const expectedDuration float64 = endTimeCut1 - startTimeCut1 + endTimeCut2 - startTimeCut2
+
+	cut1, err := video1.Cut(startTimeCut1, endTimeCut1)
 	if err != nil {
 		t.Fatalf("Failed to cut video (0-3): %v", err)
 	}
-	cut2, err := video1.Cut(2, 3)
+	cut2, err := video1.Cut(startTimeCut2, endTimeCut2)
 	if err != nil {
 		t.Fatalf("Failed to cut video (2-3): %v", err)
 	}
@@ -31,12 +39,11 @@ func TestConcatenate(t *testing.T) {
 		t.Fatalf("Concatenate returned nil video")
 	}
 
-	exportedVideo, err := moviego.NewVideoFile(result.GetFilename())
+	exportedVideo, err := moviego.NewVideoFile(result.GetFilenames()[0])
 	if err != nil {
 		t.Fatalf("Failed to load concatenated video file: %v", err)
 	}
 
-	expectedDuration := 4.0 // 3s (0-3) + 1s (2-3)
 	if math.Abs(exportedVideo.GetDuration()-expectedDuration) > 0.1 {
 		t.Fatalf("Expected duration %f, got %f", expectedDuration, exportedVideo.GetDuration())
 	}

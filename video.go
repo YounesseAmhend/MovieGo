@@ -4,31 +4,47 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"strings"
+	"sync/atomic"
 )
+
+var globalLabelCounter uint64
+
+type FileCopy struct {
+	filename string
+	label    string
+}
+
+type FilterComplex struct {
+	filterElements []string
+	fileCopy       FileCopy
+	labelVideo     string
+	labelAudio     string
+}
 
 // Video represents a video file with its properties and processing options
 type Video struct {
-	filename      string
-	codec         Codec
-	width         uint64
-	height        uint64
-	fps           uint64
-	duration      float64
-	hash          string
-	frames        uint64
-	ffmpegArgs    map[string][]string
-	filters       []Filter
-	filterComplex string
-	isTemp        bool
-	audio         Audio
-	bitRate       string
-	preset        preset
-	withMask      bool
-	pixelFormat   PixelFormat
-	startTime     float64
-	endTime       float64
-	textClips     []*TextClip
-	subtitleClips []*SubtitleClip
+	filenames          []string
+	codec              Codec
+	width              uint64
+	labelCounter       uint64
+	height             uint64
+	fps                uint64
+	duration           float64
+	frames             uint64
+	ffmpegArgs         map[string][]string
+	filters            []Filter
+	videoFilterComplex []FilterComplex
+	audioFilterComplex []FilterComplex
+	isTemp             bool
+	audio              Audio
+	bitRate            string
+	preset             preset
+	withMask           bool
+	pixelFormat        PixelFormat
+	startTime          float64
+	endTime            float64
+	textClips          []*TextClip
+	subtitleClips      []*SubtitleClip
 }
 
 // VideoParameters holds configuration for video processing
@@ -158,14 +174,14 @@ func (v *Video) GetFrames() int64 {
 }
 
 // SetFilename sets the video filename
-func (v *Video) SetFilename(filename string) *Video {
-	v.filename = filename
+func (v *Video) SetFilename(filenames []string) *Video {
+	v.filenames = filenames
 	return v
 }
 
-// GetFilename returns the video filename
-func (v *Video) GetFilename() string {
-	return v.filename
+// GetFilenames returns the video filename
+func (v *Video) GetFilenames() []string {
+	return v.filenames
 }
 
 // Codec sets the video codec
@@ -218,35 +234,48 @@ func (v *Video) SetFps(fps uint64) *Video {
 	return v
 }
 
-func (v *Video) HashCode() string {
+func (v *Video) lastAudioLabel() string {
+	return v.audioFilterComplex[len(v.audioFilterComplex)-1].labelAudio
+}
+
+func (v *Video) lastVideoLabel() string {
+	return v.videoFilterComplex[len(v.videoFilterComplex)-1].labelVideo
+}
+
+func (v *Video) HashCode(filename string) string {
 	// Generate raw hash
-	hash := sha256.Sum256([]byte(v.filename))
+	hash := sha256.Sum256([]byte(filename))
 	raw := fmt.Sprintf("%x_%f_%f", hash, v.startTime, v.endTime)
-	
+
 	// Replace FFmpeg-reserved characters with safe alternatives
-	// : is used for filter parameter separation
-	// . is used for decimal points in filters (can cause issues in labels)
-	// + and - can be ambiguous
 	safe := strings.NewReplacer(
-		":", "_",  // colon → underscore
-		".", "p",  // dot → p (for "point")
-		"+", "P",  // plus → P
-		"-", "N",  // minus → N
+		":", "_",
+		".", "p",
+		"+", "P",
+		"-", "N",
 	).Replace(raw)
-	
+
 	return "cut_" + safe // prefix to ensure starts with letter
 }
 
-func (v *Video) fileHashCode() string {
-	raw := fmt.Sprintf("%x", sha256.Sum256([]byte(v.filename)))
-		safe := strings.NewReplacer(
-		":", "_",  // colon → underscore
-		".", "p",  // dot → p (for "point")
-		"+", "P",  // plus → P
-		"-", "N",  // minus → N
+func (v *Video) nextLabel(filename string) string {
+	id := atomic.AddUint64(&globalLabelCounter, 1)
+	safeName := sanitize(filename)
+	// Result: [1_hello_world_v] and [2_hello_world_v]
+	return fmt.Sprintf("%d_%s", id, safeName)
+
+}
+
+func (v *Video) fileHashCode(filename string) string {
+	raw := fmt.Sprintf("%x", sha256.Sum256([]byte(filename)))
+	safe := strings.NewReplacer(
+		":", "_",
+		".", "p",
+		"+", "P",
+		"-", "N",
 	).Replace(raw)
-	
-	return safe 
+
+	return safe
 }
 
 // GetFps returns the video frames per second
