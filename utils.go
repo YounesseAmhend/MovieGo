@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"encoding/gob"
 	"path/filepath"
-	"strings"
 	"regexp"
+	"strings"
+	"sync/atomic"
 )
 
 func deepCopySlice[T any](src []T) ([]T, error) {
@@ -33,4 +34,8 @@ func sanitize(filename string) string {
 	}
 
 	return safeName
+}
+
+func incrementGlobalCounter() uint64 {
+	return atomic.AddUint64(&globalLabelCounter, 1);
 }

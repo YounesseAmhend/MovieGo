@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-
 )
 
 // WriteVideo processes the video with applied filters and writes to output file
@@ -96,18 +95,14 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 		filterComplex += fmt.Sprintf("[%d:a]asplit=%d[%s];", i, len(audioLabels), strings.Join(audioLabels, "]["))
 
 	}
-
+	//TODO: add gloabal filterOrder so we avoid this shittty problems
 	for _, filter := range v.videoFilterComplex {
-		filterComplex += strings.Join(filter.filterElements, ",") + fmt.Sprintf("[%s];", filter.labelVideo) //TODO: change later
-		if filter.labelAudio != "" {
-			panic("Fix this shit")
-		}
+		filterComplex += strings.Join(filter.filterElements, ",") + fmt.Sprintf("[%s];", filter.label) //TODO: change later
+	
 	}
 	for _, filter := range v.audioFilterComplex {
-		filterComplex += strings.Join(filter.filterElements, ",") + fmt.Sprintf("[%s];", filter.labelAudio) //TODO: change later
-		if filter.labelVideo != "" {
-			panic("Fix this shit")
-		}
+		filterComplex += strings.Join(filter.filterElements, ",") + fmt.Sprintf("[%s];", filter.label) //TODO: change later
+	
 	}
 
 	lastAudioLabel := v.lastAudioLabel()

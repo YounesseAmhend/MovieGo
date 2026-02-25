@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"strings"
-	"sync/atomic"
+
 )
 
 var globalLabelCounter uint64
@@ -17,8 +17,7 @@ type FileCopy struct {
 type FilterComplex struct {
 	filterElements []string
 	fileCopy       FileCopy
-	labelVideo     string
-	labelAudio     string
+	label          string
 }
 
 // Video represents a video file with its properties and processing options
@@ -235,31 +234,15 @@ func (v *Video) SetFps(fps uint64) *Video {
 }
 
 func (v *Video) lastAudioLabel() string {
-	return v.audioFilterComplex[len(v.audioFilterComplex)-1].labelAudio
+	return v.audioFilterComplex[len(v.audioFilterComplex)-1].label
 }
 
 func (v *Video) lastVideoLabel() string {
-	return v.videoFilterComplex[len(v.videoFilterComplex)-1].labelVideo
-}
-
-func (v *Video) HashCode(filename string) string {
-	// Generate raw hash
-	hash := sha256.Sum256([]byte(filename))
-	raw := fmt.Sprintf("%x_%f_%f", hash, v.startTime, v.endTime)
-
-	// Replace FFmpeg-reserved characters with safe alternatives
-	safe := strings.NewReplacer(
-		":", "_",
-		".", "p",
-		"+", "P",
-		"-", "N",
-	).Replace(raw)
-
-	return "cut_" + safe // prefix to ensure starts with letter
+	return v.videoFilterComplex[len(v.videoFilterComplex)-1].label
 }
 
 func (v *Video) nextLabel(filename string) string {
-	id := atomic.AddUint64(&globalLabelCounter, 1)
+	id := incrementGlobalCounter()
 	safeName := sanitize(filename)
 	// Result: [1_hello_world_v] and [2_hello_world_v]
 	return fmt.Sprintf("%d_%s", id, safeName)

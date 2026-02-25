@@ -39,19 +39,21 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 			label: fmt.Sprintf("%s_a", fileLabel),
 		}
 		label := v.nextLabel(filename)
+		videoLabel := fmt.Sprintf("%s_v", label)
 		videoFilterComplex = append(videoFilterComplex, FilterComplex{
 			filterElements: []string{
-				fmt.Sprintf("[%s]trim=start=%f:end=%f,setpts=PTS-STARTPTS", fileCopyVideo.label, start, end),
+				fmt.Sprintf("[%s]trim=start=%.2f:end=%.2f,setpts=PTS-STARTPTS", fileCopyVideo.label, start, end,),
 			},
 			fileCopy: *fileCopyVideo,
-			labelVideo: fmt.Sprintf("%s_v", label),
+			label: videoLabel,
 		})
+		audioLabel := fmt.Sprintf("%s_a", label)
 		audioFilterComplex = append(audioFilterComplex, FilterComplex{
 			filterElements: []string{
-				fmt.Sprintf("[%s]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS", fileCopyAudio.label, start, end),
+				fmt.Sprintf("[%s]atrim=start=%.2f:end=%.2f,asetpts=PTS-STARTPTS", fileCopyAudio.label, start, end),
 			},
 			fileCopy: *fileCopyAudio,
-			labelAudio: fmt.Sprintf("%s_a", label),
+			label: audioLabel,
 		})
 	}
 
