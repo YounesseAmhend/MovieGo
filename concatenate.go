@@ -22,18 +22,22 @@ func Concatenate(videos []Video) (*Video, error) {
 		videoFilterComplex = append(videoFilterComplex, video.videoFilterComplex...)
 		audioFilterComplex = append(audioFilterComplex, video.audioFilterComplex...)
 
-		filterElement += fmt.Sprintf("[%s][%s]", video.lastAudioLabel(), video.lastVideoLabel())
+		filterElement += fmt.Sprintf("[%s][%s]", video.lastVideoLabel(), video.lastAudioLabel())
 		duration += video.duration
 	}
 	label := fmt.Sprintf("concat_%d", incrementGlobalCounter())
 
-	filterElement += fmt.Sprintf("concat=n=%d:a=1:v=1[%s_a]", len(videos), label)
+	filterElement += fmt.Sprintf("concat=n=%d:a=1:v=1[%s_v][%s_a]", len(videos), label, label)
+
+	order := incrementOrderCounter()
 
 	audioFilterComplex = append(audioFilterComplex, FilterComplex{
-		label: label + "_a",
+		order:          order,
+		label:          label + "_a",
 		filterElements: []string{},
 	})
 	videoFilterComplex = append(videoFilterComplex, FilterComplex{
+		order:          order,
 		label:          label + "_v",
 		filterElements: []string{filterElement},
 	})

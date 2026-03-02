@@ -39,3 +39,7 @@ func sanitize(filename string) string {
 func incrementGlobalCounter() uint64 {
 	return atomic.AddUint64(&globalLabelCounter, 1);
 }
+
+func incrementOrderCounter() uint64 {
+	return atomic.AddUint64(&globalOrderCounter, 1);
+}

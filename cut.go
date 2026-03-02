@@ -26,6 +26,8 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 
 	audioFilterComplex, _ := deepCopySlice(v.audioFilterComplex)
 	videoFilterComplex, _ := deepCopySlice(v.videoFilterComplex)
+	order := incrementOrderCounter()
+
 
 	if len(v.videoFilterComplex) == 0 { // No need to check for audio\
 		filename := v.filenames[0]
@@ -41,6 +43,7 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 		label := v.nextLabel(filename)
 		videoLabel := fmt.Sprintf("%s_v", label)
 		videoFilterComplex = append(videoFilterComplex, FilterComplex{
+			order: order,
 			filterElements: []string{
 				fmt.Sprintf("[%s]trim=start=%.2f:end=%.2f,setpts=PTS-STARTPTS", fileCopyVideo.label, start, end,),
 			},
@@ -49,6 +52,7 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 		})
 		audioLabel := fmt.Sprintf("%s_a", label)
 		audioFilterComplex = append(audioFilterComplex, FilterComplex{
+			order: order,
 			filterElements: []string{
 				fmt.Sprintf("[%s]atrim=start=%.2f:end=%.2f,asetpts=PTS-STARTPTS", fileCopyAudio.label, start, end),
 			},

@@ -4,10 +4,10 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"strings"
-
 )
 
 var globalLabelCounter uint64
+var globalOrderCounter uint64
 
 type FileCopy struct {
 	filename string
@@ -18,6 +18,7 @@ type FilterComplex struct {
 	filterElements []string
 	fileCopy       FileCopy
 	label          string
+	order          uint64
 }
 
 // Video represents a video file with its properties and processing options

@@ -78,8 +78,8 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	for i, filename := range v.GetFilenames() {
 		videoLabels := []string{}
 		for _, filter := range v.videoFilterComplex {
-			currentFilename := filter.fileCopy.filename;
-			if(currentFilename == filename){
+			currentFilename := filter.fileCopy.filename
+			if currentFilename == filename {
 				videoLabels = append(videoLabels, filter.fileCopy.label)
 			}
 		}
@@ -87,22 +87,42 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 
 		audioLabels := []string{}
 		for _, filter := range v.audioFilterComplex {
-			currentFilename := filter.fileCopy.filename;
-			if(currentFilename == filename){
+			currentFilename := filter.fileCopy.filename
+			if currentFilename == filename {
 				audioLabels = append(audioLabels, filter.fileCopy.label)
 			}
 		}
 		filterComplex += fmt.Sprintf("[%d:a]asplit=%d[%s];", i, len(audioLabels), strings.Join(audioLabels, "]["))
 
 	}
-	//TODO: add gloabal filterOrder so we avoid this shittty problems
-	for _, filter := range v.videoFilterComplex {
-		filterComplex += strings.Join(filter.filterElements, ",") + fmt.Sprintf("[%s];", filter.label) //TODO: change later
-	
-	}
-	for _, filter := range v.audioFilterComplex {
-		filterComplex += strings.Join(filter.filterElements, ",") + fmt.Sprintf("[%s];", filter.label) //TODO: change later
-	
+
+	audioIndex := 0
+	videoIndex := 0
+
+	videoLen := len(v.videoFilterComplex)
+	audioLen := len(v.audioFilterComplex)
+
+	for i := uint64(0); i <= globalOrderCounter; i++ {
+		if videoIndex < (videoLen) && i == v.videoFilterComplex[videoIndex].order {
+			filter := v.videoFilterComplex[videoIndex]
+			if len(filter.filterElements) > 0 {
+				filterComplex += strings.Join(filter.filterElements, ",")
+				if !strings.HasSuffix(filter.filterElements[len(filter.filterElements)-1], "]") {
+					filterComplex += fmt.Sprintf("[%s];", filter.label)
+				}
+			}
+			videoIndex++
+		}
+		if audioIndex < (audioLen) && i == v.audioFilterComplex[audioIndex].order {
+			filter := v.audioFilterComplex[audioIndex]
+			if len(filter.filterElements) > 0 {
+				filterComplex += strings.Join(filter.filterElements, ",")
+				if !strings.HasSuffix(filter.filterElements[len(filter.filterElements)-1], "]") {
+					filterComplex += fmt.Sprintf("[%s];", filter.label)
+				}
+			}
+			audioIndex++
+		}
 	}
 
 	lastAudioLabel := v.lastAudioLabel()
@@ -110,10 +130,6 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 
 	mapVideo := fmt.Sprintf("[%s]", lastVideoLabel)
 	mapAudio := fmt.Sprintf("[%s]", lastAudioLabel)
-
-
-
-
 
 	args = append(args, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-y", parms.OutputPath)
 

@@ -16,7 +16,7 @@ func TestConcatenate(t *testing.T) {
 	const endTimeCut1 = 2
 
 	const startTimeCut2 = 2
-	const endTimeCut2 = 3
+	const endTimeCut2 = 5
 
 	const expectedDuration float64 = endTimeCut1 - startTimeCut1 + endTimeCut2 - startTimeCut2
 
@@ -35,5 +35,17 @@ func TestConcatenate(t *testing.T) {
 	result.WriteVideo(moviego.VideoParameters{OutputPath: outputPath})
 
 
+	if err != nil {
+		t.Fatalf("Failed to write video: %v", err)
+	}
+
+
+	resultVideo, err := moviego.NewVideoFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to create video file: %v", err)
+	}
+	if resultVideo.GetDuration() != expectedDuration {
+		t.Fatalf("Expected duration %f, got %f", expectedDuration, result.GetDuration())
+	}
 
 }
