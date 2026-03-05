@@ -2,9 +2,8 @@ package moviego
 
 import (
 	"fmt"
+	"math"
 	"os/exec"
-	"regexp"
-	"runtime"
 	"strings"
 )
 
@@ -26,47 +25,14 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	}
 
 	// Apply parameters to video
-	if parms.Codec != "" {
-		v.Codec(parms.Codec)
-	}
-	if parms.Fps != 0 {
-		v.SetFps(parms.Fps)
-	}
-	if parms.Preset != "" {
-		v.Preset(parms.Preset)
-	}
-	if parms.WithMask {
-		v.WithMask(parms.WithMask)
-	}
-	if parms.PixelFormat != "" {
-		v.PixelFormat(parms.PixelFormat)
-	}
-	if parms.Bitrate != "" {
-		v.BitRate(parms.Bitrate)
-	}
-	if parms.Threads == 0 {
-		// Optimize thread allocation: reserve CPUs for Go workers
-		// FFmpeg gets 60% of CPUs, Go workers use 40%
-		totalCPUs := runtime.GOMAXPROCS(0)
-		if totalCPUs <= 2 {
-			parms.Threads = uint16(totalCPUs)
-		} else {
-			parms.Threads = uint16((totalCPUs * 6) / 10)
-			if parms.Threads < 2 {
-				parms.Threads = 2
-			}
-		}
-	}
+	v.applyParameters(parms)
 
-	// Validate FPS after applying parameters
-	if v.GetFps() <= 0 {
-		return fmt.Errorf("video FPS is invalid (%d), cannot process video", v.GetFps())
-	}
 
 	ffmpegPath, err := getFFmpegPath()
 	if err != nil {
 		return fmt.Errorf("failed to get ffmpeg path: %w", err)
 	}
+
 	args := []string{ffmpegPath}
 	for _, filename := range v.GetFilenames() {
 		args = append(args, "-i", filename)
@@ -74,62 +40,76 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 
 	filterComplex := ""
 
-	//split part
+	// split part
 	for i, filename := range v.GetFilenames() {
 		videoLabels := []string{}
 		for _, filter := range v.videoFilterComplex {
-			currentFilename := filter.fileCopy.filename
+			currentFilename := filter.FileCopy.Filename
 			if currentFilename == filename {
-				videoLabels = append(videoLabels, filter.fileCopy.label)
+				videoLabels = append(videoLabels, filter.FileCopy.Label)
 			}
 		}
 		filterComplex += fmt.Sprintf("[%d:v]split=%d[%s];", i, len(videoLabels), strings.Join(videoLabels, "]["))
 
 		audioLabels := []string{}
 		for _, filter := range v.audioFilterComplex {
-			currentFilename := filter.fileCopy.filename
+			currentFilename := filter.FileCopy.Filename
 			if currentFilename == filename {
-				audioLabels = append(audioLabels, filter.fileCopy.label)
+				audioLabels = append(audioLabels, filter.FileCopy.Label)
 			}
 		}
 		filterComplex += fmt.Sprintf("[%d:a]asplit=%d[%s];", i, len(audioLabels), strings.Join(audioLabels, "]["))
 
 	}
 
-	audioIndex := 0
-	videoIndex := 0
+	videoIndex, audioIndex := 0, 0
+	videoLen, audioLen := len(v.videoFilterComplex), len(v.audioFilterComplex)
 
-	videoLen := len(v.videoFilterComplex)
-	audioLen := len(v.audioFilterComplex)
+	for videoIndex < videoLen || audioIndex < audioLen {
+		nextOrder := uint64(math.MaxUint64)
+		if videoIndex < videoLen {
+			nextOrder = v.videoFilterComplex[videoIndex].Order
+		}
+		if audioIndex < audioLen && v.audioFilterComplex[audioIndex].Order < nextOrder {
+			nextOrder = v.audioFilterComplex[audioIndex].Order
+		}
 
-	for i := uint64(0); i <= globalOrderCounter; i++ {
-		if videoIndex < (videoLen) && i == v.videoFilterComplex[videoIndex].order {
+		if videoIndex < videoLen && v.videoFilterComplex[videoIndex].Order == nextOrder {
 			filter := v.videoFilterComplex[videoIndex]
-			if len(filter.filterElements) > 0 {
-				filterComplex += strings.Join(filter.filterElements, ",")
-				if !strings.HasSuffix(filter.filterElements[len(filter.filterElements)-1], "]") {
-					filterComplex += fmt.Sprintf("[%s];", filter.label)
+			if len(filter.FilterElements) > 0 {
+				filterComplex += strings.Join(filter.FilterElements, ",")
+				if !strings.HasSuffix(filter.FilterElements[len(filter.FilterElements)-1], "]") {
+					filterComplex += fmt.Sprintf("[%s]", filter.Label)
 				}
+				filterComplex += ";"
 			}
 			videoIndex++
 		}
-		if audioIndex < (audioLen) && i == v.audioFilterComplex[audioIndex].order {
+		if audioIndex < audioLen && v.audioFilterComplex[audioIndex].Order == nextOrder {
 			filter := v.audioFilterComplex[audioIndex]
-			if len(filter.filterElements) > 0 {
-				filterComplex += strings.Join(filter.filterElements, ",")
-				if !strings.HasSuffix(filter.filterElements[len(filter.filterElements)-1], "]") {
-					filterComplex += fmt.Sprintf("[%s];", filter.label)
+			if len(filter.FilterElements) > 0 {
+				filterComplex += strings.Join(filter.FilterElements, ",")
+				if !strings.HasSuffix(filter.FilterElements[len(filter.FilterElements)-1], "]") {
+					filterComplex += fmt.Sprintf("[%s]", filter.Label)
 				}
+				filterComplex += ";"
 			}
 			audioIndex++
 		}
 	}
 
-	lastAudioLabel := v.lastAudioLabel()
-	lastVideoLabel := v.lastVideoLabel()
+	audioLabel := v.lastAudioLabel()
+	videoLabel := v.lastVideoLabel()
 
-	mapVideo := fmt.Sprintf("[%s]", lastVideoLabel)
-	mapAudio := fmt.Sprintf("[%s]", lastAudioLabel)
+	if videoLabel == "" {
+		return fmt.Errorf("no video output label generated")
+	}
+	if audioLabel == "" {
+		return fmt.Errorf("no audio output label generated")
+	}
+
+	mapVideo := fmt.Sprintf("[%s]", videoLabel)
+	mapAudio := fmt.Sprintf("[%s]", audioLabel)
 
 	args = append(args, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-y", parms.OutputPath)
 
@@ -144,46 +124,3 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	return nil
 }
 
-// ProcessVideoFramesParams contains parameters for processing video frames
-type ProcessVideoFramesParams struct {
-	OutputPath string
-	Threads    uint16
-}
-
-// validateFilterPart checks if a filter part contains valid FFmpeg filter syntax
-// It ensures the filter contains actual filter operations, not just labels
-func validateFilterPart(filterPart string) bool {
-	if strings.TrimSpace(filterPart) == "" {
-		return false
-	}
-
-	// Remove all label references (e.g., [label], [0:v], [outv]) to check for actual filter operations
-	// Labels are in the format [label_name] or [number:stream_type]
-	labelPattern := regexp.MustCompile(`\[[^\]]+\]`)
-	filterWithoutLabels := labelPattern.ReplaceAllString(filterPart, "")
-
-	// After removing labels, there should be filter operations remaining
-	// Filter operations typically contain '=' (e.g., scale=100:100, overlay=x=10:y=10)
-	// or filter names (e.g., trim, setpts, drawtext, overlay)
-	filterWithoutLabels = strings.TrimSpace(filterWithoutLabels)
-
-	// Check if there's actual filter content (not just separators)
-	if filterWithoutLabels == "" || filterWithoutLabels == ";" {
-		return false
-	}
-
-	// Check for common filter operations (contains '=' or known filter names)
-	hasFilterOps := strings.Contains(filterWithoutLabels, "=") ||
-		strings.Contains(filterWithoutLabels, "trim") ||
-		strings.Contains(filterWithoutLabels, "setpts") ||
-		strings.Contains(filterWithoutLabels, "overlay") ||
-		strings.Contains(filterWithoutLabels, "drawtext") ||
-		strings.Contains(filterWithoutLabels, "scale") ||
-		strings.Contains(filterWithoutLabels, "subtitles") ||
-		strings.Contains(filterWithoutLabels, "ass") ||
-		strings.Contains(filterWithoutLabels, "colorchannelmixer") ||
-		strings.Contains(filterWithoutLabels, "format") ||
-		strings.Contains(filterWithoutLabels, "color")
-
-	return hasFilterOps
-}

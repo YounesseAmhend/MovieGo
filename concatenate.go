@@ -32,14 +32,14 @@ func Concatenate(videos []Video) (*Video, error) {
 	order := incrementOrderCounter()
 
 	audioFilterComplex = append(audioFilterComplex, FilterComplex{
-		order:          order,
-		label:          label + "_a",
-		filterElements: []string{},
+		Order:          order,
+		Label:          label + "_a",
+		FilterElements: []string{},
 	})
 	videoFilterComplex = append(videoFilterComplex, FilterComplex{
-		order:          order,
-		label:          label + "_v",
-		filterElements: []string{filterElement},
+		Order:          order,
+		Label:          label + "_v",
+		FilterElements: []string{filterElement},
 	})
 
 	return &Video{

@@ -33,31 +33,49 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 		filename := v.filenames[0]
 		fileLabel := v.nextLabel(filename)
 		fileCopyVideo := &FileCopy{
-			filename: filename,
-			label: fmt.Sprintf("%s_v", fileLabel),
+			Filename: filename,
+			Label: fmt.Sprintf("%s_v", fileLabel),
 		}
 		fileCopyAudio := &FileCopy{
-			filename: filename,
-			label: fmt.Sprintf("%s_a", fileLabel),
+			Filename: filename,
+			Label: fmt.Sprintf("%s_a", fileLabel),
 		}
 		label := v.nextLabel(filename)
 		videoLabel := fmt.Sprintf("%s_v", label)
 		videoFilterComplex = append(videoFilterComplex, FilterComplex{
-			order: order,
-			filterElements: []string{
-				fmt.Sprintf("[%s]trim=start=%.2f:end=%.2f,setpts=PTS-STARTPTS", fileCopyVideo.label, start, end,),
+			Order: order,
+			FilterElements: []string{
+				fmt.Sprintf("[%s]trim=start=%.2f:end=%.2f,setpts=PTS-STARTPTS", fileCopyVideo.Label, start, end,),
 			},
-			fileCopy: *fileCopyVideo,
-			label: videoLabel,
+			FileCopy: *fileCopyVideo,
+			Label: videoLabel,
 		})
 		audioLabel := fmt.Sprintf("%s_a", label)
 		audioFilterComplex = append(audioFilterComplex, FilterComplex{
-			order: order,
-			filterElements: []string{
-				fmt.Sprintf("[%s]atrim=start=%.2f:end=%.2f,asetpts=PTS-STARTPTS", fileCopyAudio.label, start, end),
+			Order: order,
+			FilterElements: []string{
+				fmt.Sprintf("[%s]atrim=start=%.2f:end=%.2f,asetpts=PTS-STARTPTS", fileCopyAudio.Label, start, end),
 			},
-			fileCopy: *fileCopyAudio,
-			label: audioLabel,
+			FileCopy: *fileCopyAudio,
+			Label: audioLabel,
+		})
+	} else {
+		label := v.nextLabel(v.lastFilename())
+		videoLabel := fmt.Sprintf("%s_v", label)
+		audioLabel := fmt.Sprintf("%s_a", label)
+		videoFilterComplex = append(videoFilterComplex, FilterComplex{
+			Order: order,
+			FilterElements: []string{
+				fmt.Sprintf("[%s]trim=start=%.2f:end=%.2f,setpts=PTS-STARTPTS", v.lastVideoLabel(), start, end),
+			},
+			Label: videoLabel,
+		})
+		audioFilterComplex = append(audioFilterComplex, FilterComplex{
+			Order: order,
+			FilterElements: []string{
+				fmt.Sprintf("[%s]atrim=start=%.2f:end=%.2f,asetpts=PTS-STARTPTS", v.lastAudioLabel(), start, end),
+			},
+			Label: audioLabel,
 		})
 	}
 
@@ -80,8 +98,8 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 		preset:        v.preset,
 		withMask:      v.withMask,
 		pixelFormat:   v.pixelFormat,
-		startTime:     start,
-		endTime:       end,
+		startTime:     0,
+		endTime:       end - start,
 		textClips:     v.textClips,
 		subtitleClips: v.subtitleClips,
 	}

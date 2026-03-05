@@ -3,6 +3,7 @@ package moviego
 import (
 	"crypto/sha256"
 	"fmt"
+	"runtime"
 	"strings"
 )
 
@@ -10,15 +11,15 @@ var globalLabelCounter uint64
 var globalOrderCounter uint64
 
 type FileCopy struct {
-	filename string
-	label    string
+	Filename string
+	Label    string
 }
 
 type FilterComplex struct {
-	filterElements []string
-	fileCopy       FileCopy
-	label          string
-	order          uint64
+	FilterElements []string
+	FileCopy       FileCopy
+	Label          string
+	Order          uint64
 }
 
 // Video represents a video file with its properties and processing options
@@ -235,11 +236,47 @@ func (v *Video) SetFps(fps uint64) *Video {
 }
 
 func (v *Video) lastAudioLabel() string {
-	return v.audioFilterComplex[len(v.audioFilterComplex)-1].label
+	return v.audioFilterComplex[len(v.audioFilterComplex)-1].Label
 }
 
 func (v *Video) lastVideoLabel() string {
-	return v.videoFilterComplex[len(v.videoFilterComplex)-1].label
+	return v.videoFilterComplex[len(v.videoFilterComplex)-1].Label
+}
+
+func (v *Video) applyParameters(parms VideoParameters) *Video {
+	if parms.Codec != "" {
+		v.Codec(parms.Codec)
+	}
+	if parms.Fps != 0 {
+		v.SetFps(parms.Fps)
+	}
+	if parms.Preset != "" {
+		v.Preset(parms.Preset)
+	}
+	if parms.WithMask {
+		v.WithMask(parms.WithMask)
+	}
+	if parms.PixelFormat != "" {
+		v.PixelFormat(parms.PixelFormat)
+	}
+	if parms.Bitrate != "" {
+		v.BitRate(parms.Bitrate)
+	}
+	if parms.Threads == 0 {
+		// Optimize thread allocation: reserve CPUs for Go workers
+		// FFmpeg gets 60% of CPUs, Go workers use 40%
+		totalCPUs := runtime.GOMAXPROCS(0)
+		if totalCPUs <= 2 {
+			parms.Threads = uint16(totalCPUs)
+		} else {
+			parms.Threads = uint16((totalCPUs * 6) / 10)
+			if parms.Threads < 2 {
+				parms.Threads = 2
+			}
+		}
+	}
+
+	return v
 }
 
 func (v *Video) nextLabel(filename string) string {
@@ -282,6 +319,14 @@ func (v *Video) GetBitRate() string {
 func (v *Video) Preset(p preset) *Video {
 	v.preset = p
 	return v
+}
+
+func (v *Video) lastAudioFilter() *FilterComplex {
+	return &v.audioFilterComplex[len(v.audioFilterComplex)-1]
+}
+
+func (v *Video) lastVideoFilter() *FilterComplex {
+	return &v.videoFilterComplex[len(v.videoFilterComplex)-1]
 }
 
 // GetPreset returns the video preset
@@ -458,4 +503,8 @@ func (v *Video) HasText() bool {
 // HasSubtitles returns whether the video has any subtitle clips
 func (v *Video) HasSubtitles() bool {
 	return len(v.subtitleClips) > 0
+}
+
+func (v *Video) lastFilename() string {
+	return v.filenames[len(v.filenames)-1]
 }
