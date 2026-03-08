@@ -1,10 +1,8 @@
 package moviego
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"runtime"
-	"strings"
 )
 
 var globalLabelCounter uint64
@@ -16,10 +14,27 @@ type FileCopy struct {
 }
 
 type FilterComplex struct {
-	FilterElements []string
+	FilterElement string
 	FileCopy       FileCopy
 	Label          string
 	Order          uint64
+}
+
+// Position defines where a video is placed when used in a CompositeClip.
+// X and Y are FFmpeg expressions (e.g. "(W-w)/2", "0", "100").
+type Position struct {
+	X string
+	Y string
+}
+
+// CenterPosition returns a position that centers the overlay on the background.
+func CenterPosition() Position {
+	return Position{X: "(W-w)/2", Y: "(H-h)/2"}
+}
+
+// TopLeftPosition returns a position at the top-left corner.
+func TopLeftPosition() Position {
+	return Position{X: "0", Y: "0"}
 }
 
 // Video represents a video file with its properties and processing options
@@ -33,7 +48,6 @@ type Video struct {
 	duration           float64
 	frames             uint64
 	ffmpegArgs         map[string][]string
-	filters            []Filter
 	videoFilterComplex []FilterComplex
 	audioFilterComplex []FilterComplex
 	isTemp             bool
@@ -44,120 +58,8 @@ type Video struct {
 	pixelFormat        PixelFormat
 	startTime          float64
 	endTime            float64
-	textClips          []*TextClip
-	subtitleClips      []*SubtitleClip
+	position           Position
 }
-
-// VideoParameters holds configuration for video processing
-
-type preset string
-
-const (
-	// Software encoder presets (libx264, libx265, etc.)
-	UltraFast preset = "ultrafast"
-	SuperFast preset = "superfast"
-	VeryFast  preset = "veryfast"
-	Fast      preset = "fast"
-	Medium    preset = "medium"
-	Slow      preset = "slow"
-	VerySlow  preset = "veryslow"
-	Placebo   preset = "placebo"
-
-	// NVIDIA NVENC presets (internal use only)
-	presetNvencFast   preset = "fast"
-	presetNvencMedium preset = "medium"
-	presetNvencSlow   preset = "slow"
-	presetNvencHQ     preset = "hq"
-
-	// AMD AMF presets (internal use only)
-	presetAmfSpeed    preset = "speed"
-	presetAmfBalanced preset = "balanced"
-	presetAmfQuality  preset = "quality"
-
-	// Intel QSV presets (internal use only)
-	presetQsvVeryFast preset = "veryfast"
-	presetQsvFast     preset = "fast"
-	presetQsvMedium   preset = "medium"
-	presetQsvSlow     preset = "slow"
-	presetQsvVerySlow preset = "veryslow"
-)
-
-type VideoParameters struct {
-	OutputPath  string
-	Threads     uint16
-	Codec       Codec
-	Fps         uint64
-	Preset      preset
-	WithMask    bool
-	Bitrate     string
-	PixelFormat PixelFormat
-}
-
-type PixelFormat string
-
-const (
-	PixelFormatRGBA    PixelFormat = "rgba"
-	PixelFormatRGB     PixelFormat = "rgb"
-	PixelFormatYUV420P PixelFormat = "yuv420p"
-	PixelFormatYUV422P PixelFormat = "yuv422p"
-	PixelFormatYUV444P PixelFormat = "yuv444p"
-)
-
-type Codec string
-
-const (
-	// H.264/AVC codecs
-	CodecH264      Codec = "h264"
-	CodecLibx264   Codec = "libx264"
-	CodecH264Auto  Codec = "h264_auto"
-	CodecH264Nvenc Codec = "h264_nvenc"
-	CodecH264Qsv   Codec = "h264_qsv"
-	CodecH264Amf   Codec = "h264_amf"
-	CodecH264Vt    Codec = "h264_videotoolbox"
-
-	// H.265/HEVC codecs
-	CodecH265      Codec = "h265"
-	CodecHevc      Codec = "hevc"
-	CodecLibx265   Codec = "libx265"
-	CodecHevcNvenc Codec = "hevc_nvenc"
-	CodecHevcQsv   Codec = "hevc_qsv"
-	CodecHevcAmf   Codec = "hevc_amf"
-	CodecHevcVt    Codec = "hevc_videotoolbox"
-
-	// VP8/VP9 codecs
-	CodecVP8       Codec = "vp8"
-	CodecVP9       Codec = "vp9"
-	CodecLibvpx    Codec = "libvpx"
-	CodecLibvpxVP9 Codec = "libvpx-vp9"
-
-	// AV1 codecs
-	CodecAV1       Codec = "av1"
-	CodecLibaomAV1 Codec = "libaom-av1"
-	CodecLibsvtav1 Codec = "libsvtav1"
-	CodecAV1Nvenc  Codec = "av1_nvenc"
-	CodecAV1Qsv    Codec = "av1_qsv"
-
-	// MPEG codecs
-	CodecMpeg2video Codec = "mpeg2video"
-	CodecMpeg4      Codec = "mpeg4"
-	CodecMpeg1video Codec = "mpeg1video"
-
-	// Other codecs
-	CodecTheora   Codec = "theora"
-	CodecWmv1     Codec = "wmv1"
-	CodecWmv2     Codec = "wmv2"
-	CodecWmv3     Codec = "wmv3"
-	CodecVc1      Codec = "vc1"
-	CodecProres   Codec = "prores"
-	CodecProresKS Codec = "prores_ks"
-	CodecDNxHD    Codec = "dnxhd"
-	CodecDNxHR    Codec = "dnxhr"
-	CodecHuffYUV  Codec = "huffyuv"
-	CodecFFV1     Codec = "ffv1"
-	CodecUtvideo  Codec = "utvideo"
-	CodecMjpeg    Codec = "mjpeg"
-	CodecLibxvid  Codec = "libxvid"
-)
 
 // ============================================================================
 // Video Property Getters and Setters
@@ -235,70 +137,6 @@ func (v *Video) SetFps(fps uint64) *Video {
 	return v
 }
 
-func (v *Video) lastAudioLabel() string {
-	return v.audioFilterComplex[len(v.audioFilterComplex)-1].Label
-}
-
-func (v *Video) lastVideoLabel() string {
-	return v.videoFilterComplex[len(v.videoFilterComplex)-1].Label
-}
-
-func (v *Video) applyParameters(parms VideoParameters) *Video {
-	if parms.Codec != "" {
-		v.Codec(parms.Codec)
-	}
-	if parms.Fps != 0 {
-		v.SetFps(parms.Fps)
-	}
-	if parms.Preset != "" {
-		v.Preset(parms.Preset)
-	}
-	if parms.WithMask {
-		v.WithMask(parms.WithMask)
-	}
-	if parms.PixelFormat != "" {
-		v.PixelFormat(parms.PixelFormat)
-	}
-	if parms.Bitrate != "" {
-		v.BitRate(parms.Bitrate)
-	}
-	if parms.Threads == 0 {
-		// Optimize thread allocation: reserve CPUs for Go workers
-		// FFmpeg gets 60% of CPUs, Go workers use 40%
-		totalCPUs := runtime.GOMAXPROCS(0)
-		if totalCPUs <= 2 {
-			parms.Threads = uint16(totalCPUs)
-		} else {
-			parms.Threads = uint16((totalCPUs * 6) / 10)
-			if parms.Threads < 2 {
-				parms.Threads = 2
-			}
-		}
-	}
-
-	return v
-}
-
-func (v *Video) nextLabel(filename string) string {
-	id := incrementGlobalCounter()
-	safeName := sanitize(filename)
-	// Result: [1_hello_world_v] and [2_hello_world_v]
-	return fmt.Sprintf("%d_%s", id, safeName)
-
-}
-
-func (v *Video) fileHashCode(filename string) string {
-	raw := fmt.Sprintf("%x", sha256.Sum256([]byte(filename)))
-	safe := strings.NewReplacer(
-		":", "_",
-		".", "p",
-		"+", "P",
-		"-", "N",
-	).Replace(raw)
-
-	return safe
-}
-
 // GetFps returns the video frames per second
 func (v *Video) GetFps() uint64 {
 	return v.fps
@@ -319,14 +157,6 @@ func (v *Video) GetBitRate() string {
 func (v *Video) Preset(p preset) *Video {
 	v.preset = p
 	return v
-}
-
-func (v *Video) lastAudioFilter() *FilterComplex {
-	return &v.audioFilterComplex[len(v.audioFilterComplex)-1]
-}
-
-func (v *Video) lastVideoFilter() *FilterComplex {
-	return &v.videoFilterComplex[len(v.videoFilterComplex)-1]
 }
 
 // GetPreset returns the video preset
@@ -378,6 +208,21 @@ func (v *Video) GetEndTime() float64 {
 	return v.endTime
 }
 
+// SetPosition sets the overlay position used by CompositeClip.
+func (v *Video) SetPosition(position Position) *Video {
+	v.position = position
+	return v
+}
+
+// GetPosition returns the overlay position.
+// Returns center position if none was explicitly set.
+func (v *Video) GetPosition() Position {
+	if v.position.X == "" && v.position.Y == "" {
+		return CenterPosition()
+	}
+	return v.position
+}
+
 // ============================================================================
 // FFmpeg Configuration
 // ============================================================================
@@ -409,16 +254,6 @@ func (v *Video) GetAudio() *Audio {
 }
 
 // ============================================================================
-// Filter Configuration
-// ============================================================================
-
-// AddFilter adds a built-in filter to the video processing pipeline
-func (v *Video) AddFilter(filter Filter) *Video {
-	v.filters = append(v.filters, filter)
-	return v
-}
-
-// ============================================================================
 // Temporary File Management
 // ============================================================================
 
@@ -438,72 +273,62 @@ func (v *Video) HasAudio() bool {
 	return v.audio.codec != ""
 }
 
-// AddText adds a text overlay to the video
-func (v *Video) AddText(textClip *TextClip) *Video {
-	v.textClips = append(v.textClips, textClip)
-	return v
+// ============================================================================
+// Internal Helpers
+// ============================================================================
+
+func (v *Video) lastAudioLabel() string {
+	return v.audioFilterComplex[len(v.audioFilterComplex)-1].Label
 }
 
-// AddSubtitle adds a subtitle file to the video and returns the SubtitleClip for further configuration
-func (v *Video) AddSubtitle(subtitlePath string) *SubtitleClip {
-	subtitleClip := NewSubtitleClip(subtitlePath)
-	v.subtitleClips = append(v.subtitleClips, subtitleClip)
-	return subtitleClip
+func (v *Video) lastVideoLabel() string {
+	return v.videoFilterComplex[len(v.videoFilterComplex)-1].Label
 }
 
-// AddSubtitleClip adds a pre-configured SubtitleClip to the video
-func (v *Video) AddSubtitleClip(subtitleClip *SubtitleClip) *Video {
-	v.subtitleClips = append(v.subtitleClips, subtitleClip)
-	return v
-}
-
-// RemoveText removes a text overlay at the specified index
-func (v *Video) RemoveText(index int) *Video {
-	if index >= 0 && index < len(v.textClips) {
-		v.textClips = append(v.textClips[:index], v.textClips[index+1:]...)
+func (v *Video) applyParameters(parms VideoParameters) *Video {
+	if parms.Codec != "" {
+		v.Codec(parms.Codec)
 	}
-	return v
-}
-
-// RemoveSubtitle removes a subtitle clip at the specified index
-func (v *Video) RemoveSubtitle(index int) *Video {
-	if index >= 0 && index < len(v.subtitleClips) {
-		v.subtitleClips = append(v.subtitleClips[:index], v.subtitleClips[index+1:]...)
+	if parms.Fps != 0 {
+		v.SetFps(parms.Fps)
 	}
+	if parms.Preset != "" {
+		v.Preset(parms.Preset)
+	}
+	if parms.WithMask {
+		v.WithMask(parms.WithMask)
+	}
+	if parms.PixelFormat != "" {
+		v.PixelFormat(parms.PixelFormat)
+	}
+	if parms.Bitrate != "" {
+		v.BitRate(parms.Bitrate)
+	}
+	if parms.Threads == 0 {
+		// Optimize thread allocation: reserve CPUs for Go workers
+		// FFmpeg gets 60% of CPUs, Go workers use 40%
+		totalCPUs := runtime.GOMAXPROCS(0)
+		if totalCPUs <= 2 {
+			parms.Threads = uint16(totalCPUs)
+		} else {
+			parms.Threads = uint16((totalCPUs * 6) / 10)
+			if parms.Threads < 2 {
+				parms.Threads = 2
+			}
+		}
+	}
+
 	return v
 }
 
-// ClearText removes all text overlays
-func (v *Video) ClearText() *Video {
-	v.textClips = []*TextClip{}
-	return v
+func (v *Video) nextLabel(filename string) string {
+	id := incrementGlobalCounter()
+	safeName := sanitize(filename)
+	// Result: [1_hello_world_v] and [2_hello_world_v]
+	return fmt.Sprintf("%d_%s", id, safeName)
 }
 
-// ClearSubtitles removes all subtitle clips
-func (v *Video) ClearSubtitles() *Video {
-	v.subtitleClips = []*SubtitleClip{}
-	return v
-}
 
-// GetTextClips returns all text overlays
-func (v *Video) GetTextClips() []*TextClip {
-	return v.textClips
-}
-
-// GetSubtitleClips returns all subtitle clips
-func (v *Video) GetSubtitleClips() []*SubtitleClip {
-	return v.subtitleClips
-}
-
-// HasText returns whether the video has any text overlays
-func (v *Video) HasText() bool {
-	return len(v.textClips) > 0
-}
-
-// HasSubtitles returns whether the video has any subtitle clips
-func (v *Video) HasSubtitles() bool {
-	return len(v.subtitleClips) > 0
-}
 
 func (v *Video) lastFilename() string {
 	return v.filenames[len(v.filenames)-1]

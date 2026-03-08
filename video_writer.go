@@ -4,8 +4,63 @@ import (
 	"fmt"
 	"math"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
+
+func writeFilterComplex(b *strings.Builder, raw string) {
+	for _, segment := range strings.Split(raw, ";") {
+		segment = strings.TrimSpace(segment)
+		if segment != "" {
+			b.WriteString("    ")
+			b.WriteString(segment)
+			b.WriteString(";\n")
+		}
+	}
+}
+
+// formatCmd formats an exec.Cmd into a readable multi-line string.
+// The -filter_complex value is split by ";" so each filter gets its own line.
+func formatCmd(cmd *exec.Cmd) string {
+	args := cmd.Args
+	if len(args) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	exe := filepath.Base(args[0])
+	if strings.HasSuffix(strings.ToLower(exe), ".exe") {
+		exe = exe[:len(exe)-4]
+	}
+	b.WriteString(exe)
+	b.WriteByte('\n')
+
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+
+		if arg == "-filter_complex" && i+1 < len(args) {
+			b.WriteString("  -filter_complex\n")
+			i++
+			writeFilterComplex(&b, args[i])
+			continue
+		}
+
+		if strings.HasPrefix(arg, "-") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			b.WriteString("  ")
+			b.WriteString(arg)
+			b.WriteByte(' ')
+			b.WriteString(args[i+1])
+			b.WriteByte('\n')
+			i++
+		} else {
+			b.WriteString("  ")
+			b.WriteString(arg)
+			b.WriteByte('\n')
+		}
+	}
+
+	return b.String()
+}
 
 // WriteVideo processes the video with applied filters and writes to output file
 func (v *Video) WriteVideo(parms VideoParameters) error {
@@ -33,9 +88,9 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 		return fmt.Errorf("failed to get ffmpeg path: %w", err)
 	}
 
-	args := []string{ffmpegPath}
+	ffmpegArgs := []string{}
 	for _, filename := range v.GetFilenames() {
-		args = append(args, "-i", filename)
+		ffmpegArgs = append(ffmpegArgs, "-i", filename)
 	}
 
 	filterComplex := ""
@@ -76,9 +131,9 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 
 		if videoIndex < videoLen && v.videoFilterComplex[videoIndex].Order == nextOrder {
 			filter := v.videoFilterComplex[videoIndex]
-			if len(filter.FilterElements) > 0 {
-				filterComplex += strings.Join(filter.FilterElements, ",")
-				if !strings.HasSuffix(filter.FilterElements[len(filter.FilterElements)-1], "]") {
+			if filter.FilterElement != "" {
+				filterComplex += filter.FilterElement
+				if !strings.HasSuffix(filter.FilterElement, "]") {
 					filterComplex += fmt.Sprintf("[%s]", filter.Label)
 				}
 				filterComplex += ";"
@@ -87,9 +142,9 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 		}
 		if audioIndex < audioLen && v.audioFilterComplex[audioIndex].Order == nextOrder {
 			filter := v.audioFilterComplex[audioIndex]
-			if len(filter.FilterElements) > 0 {
-				filterComplex += strings.Join(filter.FilterElements, ",")
-				if !strings.HasSuffix(filter.FilterElements[len(filter.FilterElements)-1], "]") {
+			if filter.FilterElement != "" {
+				filterComplex += filter.FilterElement
+				if !strings.HasSuffix(filter.FilterElement, "]") {
 					filterComplex += fmt.Sprintf("[%s]", filter.Label)
 				}
 				filterComplex += ";"
@@ -111,11 +166,14 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	mapVideo := fmt.Sprintf("[%s]", videoLabel)
 	mapAudio := fmt.Sprintf("[%s]", audioLabel)
 
-	args = append(args, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-y", parms.OutputPath)
+	ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-y", parms.OutputPath)
 
-	cmd := exec.Command(ffmpegPath, args[1:]...)
+	cmd := exec.Command(ffmpegPath, ffmpegArgs...)
+	displayProgram := filepath.Base(ffmpegPath)
+	displayProgram = strings.TrimSuffix(displayProgram, filepath.Ext(displayProgram))
+	displayCmd := &exec.Cmd{Args: append([]string{displayProgram}, ffmpegArgs...)}
 
-	logger.Info("ffmpeg command", "cmd", cmd.String())
+	fmt.Println(formatCmd(displayCmd))
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to execute ffmpeg: %w", err)

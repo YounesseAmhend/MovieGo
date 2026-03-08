@@ -32,14 +32,14 @@ func Concatenate(videos []Video) (*Video, error) {
 	order := incrementOrderCounter()
 
 	audioFilterComplex = append(audioFilterComplex, FilterComplex{
-		Order:          order,
-		Label:          label + "_a",
-		FilterElements: []string{},
+		Order:         order,
+		Label:         label + "_a",
+		FilterElement: "",
 	})
 	videoFilterComplex = append(videoFilterComplex, FilterComplex{
-		Order:          order,
-		Label:          label + "_v",
-		FilterElements: []string{filterElement},
+		Order:         order,
+		Label:         label + "_v",
+		FilterElement: filterElement,
 	})
 
 	return &Video{
@@ -55,14 +55,12 @@ func Concatenate(videos []Video) (*Video, error) {
 		fps:                videos[0].fps,
 		frames:             uint64(float64(videos[0].fps) * duration),
 		ffmpegArgs:         videos[0].ffmpegArgs,
-		filters:            videos[0].filters,
 		isTemp:             false,
 		audio:              videos[0].audio,
 		bitRate:            videos[0].bitRate,
 		preset:             videos[0].preset,
 		withMask:           videos[0].withMask,
 		pixelFormat:        videos[0].pixelFormat,
-		textClips:          videos[0].textClips,
-		subtitleClips:      videos[0].subtitleClips,
+		position:           videos[0].position,
 	}, nil
 }
