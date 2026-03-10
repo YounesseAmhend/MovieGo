@@ -153,6 +153,8 @@ func (v *Video) videoFilter(filter string) (*Video, error) {
 		startTime:          v.startTime,
 		endTime:            v.endTime,
 		position:           v.position,
+		animatedPosition:   v.animatedPosition,
+		animatedOpacity:    v.animatedOpacity,
 	}, nil
 }
 
@@ -205,7 +207,7 @@ func (v *Video) ScaleRatio(ratio float64) (*Video, error) {
 
 // Rotate rotates the video by the given angle in radians.
 func (v *Video) Rotate(angle float64) (*Video, error) {
-	return v.videoFilter(fmt.Sprintf("rotate=%.4f", angle))
+	return v.videoFilter(fmt.Sprintf("rotate=%.4f:fillcolor=none", angle))
 }
 
 // HorizontalFlip flips the video horizontally.
@@ -341,4 +343,43 @@ func (v *Video) Pad(params PadParams) (*Video, error) {
 		padded.height = uint64(evenDimension(params.Height))
 	}
 	return padded, nil
+}
+
+// Blur applies a Gaussian blur. Sigma controls blur strength (higher = more blur).
+func (v *Video) Blur(sigma float64) (*Video, error) {
+	if sigma <= 0 {
+		return nil, fmt.Errorf("sigma must be positive, got %f", sigma)
+	}
+	return v.videoFilter(fmt.Sprintf("gblur=sigma=%.4f", sigma))
+}
+
+// Sharpen applies an unsharp mask. Amount controls sharpening strength (1.0-5.0 typical).
+func (v *Video) Sharpen(amount float64) (*Video, error) {
+	if amount <= 0 {
+		return nil, fmt.Errorf("amount must be positive, got %f", amount)
+	}
+	return v.videoFilter(fmt.Sprintf("unsharp=5:5:%.4f:5:5:0", amount))
+}
+
+// Grayscale converts the video to grayscale.
+func (v *Video) Grayscale() (*Video, error) {
+	return v.videoFilter("hue=s=0")
+}
+
+// Sepia applies a sepia tone effect.
+func (v *Video) Sepia() (*Video, error) {
+	return v.videoFilter("colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0")
+}
+
+// Vignette applies a vignette (darkened corners) effect. Angle controls darkness (radians, PI/5 typical).
+func (v *Video) Vignette(angle float64) (*Video, error) {
+	if angle <= 0 {
+		return nil, fmt.Errorf("angle must be positive, got %f", angle)
+	}
+	return v.videoFilter(fmt.Sprintf("vignette=angle=%.4f", angle))
+}
+
+// Negate inverts the colors of the video.
+func (v *Video) Negate() (*Video, error) {
+	return v.videoFilter("negate")
 }

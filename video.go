@@ -59,6 +59,8 @@ type Video struct {
 	startTime          float64
 	endTime            float64
 	position           Position
+	animatedPosition   *AnimatedPosition // nil = use static position
+	animatedOpacity    *Animation         // nil = fully opaque
 }
 
 // ============================================================================
@@ -221,6 +223,18 @@ func (v *Video) GetPosition() Position {
 		return CenterPosition()
 	}
 	return v.position
+}
+
+// SetAnimatedPosition sets the overlay position animation for CompositeClip.
+func (v *Video) SetAnimatedPosition(ap AnimatedPosition) *Video {
+	v.animatedPosition = &ap
+	return v
+}
+
+// SetAnimatedOpacity sets the overlay opacity animation for CompositeClip.
+func (v *Video) SetAnimatedOpacity(a Animation) *Video {
+	v.animatedOpacity = &a
+	return v
 }
 
 // ============================================================================

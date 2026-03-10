@@ -106,6 +106,42 @@ func TestAllFiltersStacked(t *testing.T) {
 			apply:  func(v *moviego.Video, _ float64) (*moviego.Video, error) { return v.VerticalFlip() },
 			formatLabel: func(_ float64) string { return "VerticalFlip" },
 		},
+		{
+			name:   "blur",
+			values: []float64{0.5, 1.0, 2.0, 4.0},
+			apply:  func(v *moviego.Video, x float64) (*moviego.Video, error) { return v.Blur(x) },
+			formatLabel: func(x float64) string { return fmt.Sprintf("Blur %.1f", x) },
+		},
+		{
+			name:   "sharpen",
+			values: []float64{0.5, 1.0, 1.5, 2.0},
+			apply:  func(v *moviego.Video, x float64) (*moviego.Video, error) { return v.Sharpen(x) },
+			formatLabel: func(x float64) string { return fmt.Sprintf("Sharpen %.1f", x) },
+		},
+		{
+			name:   "grayscale",
+			values: []float64{1, 1, 1, 1},
+			apply:  func(v *moviego.Video, _ float64) (*moviego.Video, error) { return v.Grayscale() },
+			formatLabel: func(_ float64) string { return "Grayscale" },
+		},
+		{
+			name:   "sepia",
+			values: []float64{1, 1, 1, 1},
+			apply:  func(v *moviego.Video, _ float64) (*moviego.Video, error) { return v.Sepia() },
+			formatLabel: func(_ float64) string { return "Sepia" },
+		},
+		{
+			name:   "vignette",
+			values: []float64{0.3, 0.5, 0.8, 1.0},
+			apply:  func(v *moviego.Video, x float64) (*moviego.Video, error) { return v.Vignette(x) },
+			formatLabel: func(x float64) string { return fmt.Sprintf("Vignette %.1f", x) },
+		},
+		{
+			name:   "negate",
+			values: []float64{1, 1, 1, 1},
+			apply:  func(v *moviego.Video, _ float64) (*moviego.Video, error) { return v.Negate() },
+			formatLabel: func(_ float64) string { return "Negate" },
+		},
 	}
 
 	for _, spec := range specs {

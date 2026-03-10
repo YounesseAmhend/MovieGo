@@ -166,7 +166,7 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	mapVideo := fmt.Sprintf("[%s]", videoLabel)
 	mapAudio := fmt.Sprintf("[%s]", audioLabel)
 
-	ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-y", parms.OutputPath)
+	ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-metadata:s:v:0", "rotate=0", "-y", parms.OutputPath)
 
 	cmd := exec.Command(ffmpegPath, ffmpegArgs...)
 	displayProgram := filepath.Base(ffmpegPath)

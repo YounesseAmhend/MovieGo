@@ -131,6 +131,8 @@ func (v *Video) Speed(speed float64, pitch ...float64) (*Video, error) {
 		startTime:          0,
 		endTime:            newDuration,
 		position:           v.position,
+		animatedPosition:   v.animatedPosition,
+		animatedOpacity:    v.animatedOpacity,
 	}
 
 	return newVideo, nil

@@ -3,6 +3,7 @@ package moviego
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -45,6 +46,13 @@ type Layout struct {
 	FixBounds   bool   // prevent text from going outside the video frame
 }
 
+// TypewriterParams configures the typewriter (character-by-character) effect.
+type TypewriterParams struct {
+	CharDelay float64 // seconds between each character appearing
+	StartTime float64 // when typing starts
+	Cursor    string  // cursor character (e.g. "|"), empty = no cursor
+}
+
 // TextClip represents a text overlay to be drawn on a video.
 type TextClip struct {
 	// Content
@@ -75,6 +83,11 @@ type TextClip struct {
 	// Advanced
 	TextShaping bool          // enable RTL/Arabic text shaping (default: true)
 	Expansion   TextExpansion // text expansion mode (default: ExpansionNormal)
+
+	// Animations (if set, override static Position/Opacity)
+	AnimatePosition *AnimatedPosition // animated X,Y position
+	AnimateOpacity  *Animation        // animated alpha (0-1)
+	Typewriter      *TypewriterParams // character-by-character reveal
 }
 
 // drawtext position expression constants
@@ -183,11 +196,17 @@ func (tc TextClip) appendFontParts(parts []string) []string {
 }
 
 func (tc TextClip) appendPositionParts(parts []string) []string {
-	if tc.Position.X != "" {
-		parts = append(parts, "x="+tc.Position.X)
-	}
-	if tc.Position.Y != "" {
-		parts = append(parts, "y="+tc.Position.Y)
+	if tc.AnimatePosition != nil {
+		xExpr := tc.AnimatePosition.toExprX("t")
+		yExpr := tc.AnimatePosition.toExprY("t")
+		parts = append(parts, "x='"+xExpr+"'", "y='"+yExpr+"'")
+	} else if tc.Position.X != "" || tc.Position.Y != "" {
+		if tc.Position.X != "" {
+			parts = append(parts, "x="+tc.Position.X)
+		}
+		if tc.Position.Y != "" {
+			parts = append(parts, "y="+tc.Position.Y)
+		}
 	}
 	return parts
 }
@@ -213,6 +232,10 @@ func (tc TextClip) appendAppearanceParts(parts []string) []string {
 }
 
 func (tc TextClip) appendOpacityPart(parts []string) []string {
+	if tc.AnimateOpacity != nil {
+		expr := tc.AnimateOpacity.toExprDefault()
+		return append(parts, "alpha='"+expr+"'")
+	}
 	if tc.Opacity > 0 && tc.Opacity < 1 {
 		return append(parts, fmt.Sprintf("alpha=%.4f", tc.Opacity))
 	}
@@ -296,8 +319,78 @@ func (v *Video) AddText(clip TextClip) (*Video, error) {
 	if clip.Text == "" && clip.TextFile == "" {
 		return nil, fmt.Errorf("AddText: Text or TextFile is required")
 	}
+	if clip.Typewriter != nil {
+		return v.addTextTypewriter(clip)
+	}
 	filter := clip.buildDrawTextFilter(v.duration)
 	return v.videoFilter(filter)
+}
+
+// addTextTypewriter adds text with character-by-character typewriter effect.
+func (v *Video) addTextTypewriter(clip TextClip) (*Video, error) {
+	tw := clip.Typewriter
+	if tw.CharDelay <= 0 {
+		tw = &TypewriterParams{CharDelay: 0.1, StartTime: clip.StartTime, Cursor: tw.Cursor}
+	}
+	text := clip.Text
+	if text == "" {
+		return nil, fmt.Errorf("AddText typewriter: Text is required (TextFile not supported for typewriter)")
+	}
+	// Approximate character width as 0.6 * font size for positioning
+	charWidth := clip.FontSize
+	if charWidth <= 0 {
+		charWidth = 24
+	}
+	charWidth = int(float64(charWidth) * 0.6)
+	if charWidth < 8 {
+		charWidth = 8
+	}
+	baseX := 10
+	baseY := 10
+	if clip.Position.X != "" {
+		if x, err := strconv.ParseFloat(clip.Position.X, 64); err == nil {
+			baseX = int(x)
+		}
+	}
+	if clip.Position.Y != "" {
+		if y, err := strconv.ParseFloat(clip.Position.Y, 64); err == nil {
+			baseY = int(y)
+		}
+	}
+	var err error
+	for i, r := range text {
+		charClip := clip
+		charClip.Text = string(r)
+		charClip.Typewriter = nil
+		charClip.AnimatePosition = nil
+		charClip.AnimateOpacity = nil
+		charClip.Position = Position{X: fmt.Sprintf("%d", baseX+i*charWidth), Y: fmt.Sprintf("%d", baseY)}
+		charClip.StartTime = tw.StartTime + float64(i)*tw.CharDelay
+		charClip.EndTime = 0
+
+		filter := charClip.buildDrawTextFilter(v.duration)
+		v, err = v.videoFilter(filter)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if tw.Cursor != "" {
+		cursorClip := clip
+		cursorClip.Text = tw.Cursor
+		cursorClip.Typewriter = nil
+		cursorClip.AnimatePosition = nil
+		cursorClip.AnimateOpacity = nil
+		cursorClip.Position = Position{X: fmt.Sprintf("%d", baseX+len(text)*charWidth), Y: fmt.Sprintf("%d", baseY)}
+		cursorClip.StartTime = tw.StartTime
+		cursorClip.EndTime = 0
+		// Cursor blinks - show for 0.5s, hide for 0.5s (simplified: always visible)
+		filter := cursorClip.buildDrawTextFilter(v.duration)
+		v, err = v.videoFilter(filter)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return v, nil
 }
 
 // AddTexts adds multiple text overlays to the video in one call.

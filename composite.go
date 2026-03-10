@@ -76,14 +76,31 @@ func CompositeClip(videos []Video) (*Video, error) {
 	//   [bg][fg1]overlay=x=...:y=...[ov1];
 	//   [ov1][fg2]overlay=x=...:y=...[ov2];
 	//   ...last one gets the final label
+	// If animatedOpacity is set, insert format=rgba,colorchannelmixer before overlay.
+	// If animatedPosition is set, use x='expr':y='expr' instead of static position.
 	currentLabel := videos[0].lastVideoLabel()
 	filterElement := ""
 
 	for i := 1; i < len(videos); i++ {
-		pos := videos[i].GetPosition()
 		fgLabel := videos[i].lastVideoLabel()
 
-		overlayExpr := fmt.Sprintf("[%s][%s]overlay=x=%s:y=%s", currentLabel, fgLabel, pos.X, pos.Y)
+		// Apply animated opacity if set
+		if videos[i].animatedOpacity != nil {
+			alphaLabel := fmt.Sprintf("%s_alpha_%d", compositeLabel, i)
+			alphaExpr := videos[i].animatedOpacity.toExprDefault()
+			filterElement += fmt.Sprintf("[%s]format=rgba,colorchannelmixer=aa='%s'[%s];", fgLabel, alphaExpr, alphaLabel)
+			fgLabel = alphaLabel
+		}
+
+		var overlayExpr string
+		if videos[i].animatedPosition != nil {
+			xExpr := videos[i].animatedPosition.toExprX("t")
+			yExpr := videos[i].animatedPosition.toExprY("t")
+			overlayExpr = fmt.Sprintf("[%s][%s]overlay=x='%s':y='%s'", currentLabel, fgLabel, xExpr, yExpr)
+		} else {
+			pos := videos[i].GetPosition()
+			overlayExpr = fmt.Sprintf("[%s][%s]overlay=x=%s:y=%s", currentLabel, fgLabel, pos.X, pos.Y)
+		}
 
 		if i < len(videos)-1 {
 			intermediateLabel := fmt.Sprintf("%s_ov%d", compositeLabel, i)
