@@ -347,3 +347,30 @@ func resolveFps(preferredFps, fallbackFps uint64) uint64 {
 	}
 	return fallbackFps
 }
+
+// resolveVideoEncoder maps Codec (user-facing) to FFmpeg encoder name.
+// Handles aliases like h264→libx264, hevc/h265→libx265, and h264_auto→selectBestH264Codec().
+func resolveVideoEncoder(preferred Codec, fallback string) string {
+	codec := string(preferred)
+	if codec == "" {
+		codec = fallback
+	}
+	switch codec {
+	case "h264", "":
+		return "libx264"
+	case "h264_auto":
+		return selectBestH264Codec()
+	case "hevc", "h265":
+		return "libx265"
+	default:
+		return codec // libx264, h264_nvenc, etc. pass through
+	}
+}
+
+// resolvePixelFormat resolves pixel format with fallback: preferred → fallback.
+func resolvePixelFormat(preferred, fallback PixelFormat) PixelFormat {
+	if preferred != "" {
+		return preferred
+	}
+	return fallback
+}

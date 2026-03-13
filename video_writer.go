@@ -5,6 +5,7 @@ import (
 	"math"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -166,7 +167,54 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	mapVideo := fmt.Sprintf("[%s]", videoLabel)
 	mapAudio := fmt.Sprintf("[%s]", audioLabel)
 
-	ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-metadata:s:v:0", "rotate=0", "-y", parms.OutputPath)
+	// Video codec
+	encoder := resolveVideoEncoder(parms.Codec, v.GetCodec())
+	ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-c:v", encoder)
+
+	// Threads (compute effective value - applyParameters modifies a copy)
+	effectiveThreads := parms.Threads
+	if effectiveThreads == 0 {
+		totalCPUs := runtime.GOMAXPROCS(0)
+		if totalCPUs <= 2 {
+			effectiveThreads = uint16(totalCPUs)
+		} else {
+			effectiveThreads = uint16((totalCPUs * 6) / 10)
+			if effectiveThreads < 2 {
+				effectiveThreads = 2
+			}
+		}
+	}
+	ffmpegArgs = append(ffmpegArgs, "-threads", fmt.Sprintf("%d", effectiveThreads))
+
+	// FPS (if set)
+	if fps := resolveFps(parms.Fps, v.GetFps()); fps > 0 {
+		ffmpegArgs = append(ffmpegArgs, "-r", fmt.Sprintf("%d", fps))
+	}
+
+	// Bitrate (if set)
+	if br := resolveBitrate(parms.Bitrate, v.GetBitRate()); br != "" {
+		ffmpegArgs = append(ffmpegArgs, "-b:v", br)
+	}
+
+	// Preset (codec-specific, only for encoders that support it)
+	presetStr := resolvePreset(parms.Preset, v.GetPreset())
+	mappedPreset := mapPresetForCodec(encoder, presetStr)
+	if mappedPreset != "" {
+		ffmpegArgs = append(ffmpegArgs, "-preset", mappedPreset)
+	}
+
+	// Pixel format (if set)
+	if pf := resolvePixelFormat(parms.PixelFormat, v.GetPixelFormat()); pf != "" {
+		ffmpegArgs = append(ffmpegArgs, "-pix_fmt", string(pf))
+	}
+
+	// Audio codec for MP4 output
+	outputExt := strings.ToLower(filepath.Ext(parms.OutputPath))
+	if outputExt == ".mp4" || outputExt == ".m4a" {
+		ffmpegArgs = append(ffmpegArgs, "-c:a", "aac")
+	}
+
+	ffmpegArgs = append(ffmpegArgs, "-metadata:s:v:0", "rotate=0", "-y", parms.OutputPath)
 
 	cmd := exec.Command(ffmpegPath, ffmpegArgs...)
 	displayProgram := filepath.Base(ffmpegPath)
