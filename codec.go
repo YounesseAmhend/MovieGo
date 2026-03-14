@@ -94,11 +94,36 @@ const (
 	PixelFormatRGBA    PixelFormat = "rgba"
 	PixelFormatRGB     PixelFormat = "rgb"
 	PixelFormatYUV420P PixelFormat = "yuv420p"
+	PixelFormatYUVA420P PixelFormat = "yuva420p"
 	PixelFormatYUV422P PixelFormat = "yuv422p"
 	PixelFormatYUV444P PixelFormat = "yuv444p"
 )
 
-// VideoParameters holds configuration for video processing
+// Progress holds real-time encoding progress reported by FFmpeg.
+type Progress struct {
+	// Percentage of encoding completed (0.0 – 100.0).
+	Percentage float64
+	// Current output timestamp in seconds.
+	OutTime float64
+	// Total expected duration in seconds.
+	TotalDuration float64
+	// Encoding speed relative to real-time (e.g. 1.5 means 1.5× real-time).
+	Speed float64
+	// Current encoding bitrate string (e.g. "1024.5kbits/s").
+	Bitrate string
+	// Current frame number being encoded.
+	Frame int64
+	// Frames per second the encoder is running at.
+	FPS float64
+	// Whether encoding has finished.
+	Done bool
+}
+
+// VideoParameters holds configuration for video processing.
+//
+// By default every encode shows a colored progress bar on stderr.
+// Set SilentProgress to true to suppress it, or set OnProgress to
+// replace the built-in output with your own handler.
 type VideoParameters struct {
 	OutputPath  string
 	Threads     uint16
@@ -108,4 +133,10 @@ type VideoParameters struct {
 	WithMask    bool
 	Bitrate     string
 	PixelFormat PixelFormat
+	// SilentProgress disables the default colored progress bar.
+	// Has no effect when OnProgress is set.
+	SilentProgress bool
+	// OnProgress, when set, replaces the default colored progress bar.
+	// Called periodically with encoding progress.
+	OnProgress func(Progress)
 }
