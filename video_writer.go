@@ -117,10 +117,6 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 		ffmpegArgs = append(ffmpegArgs, "-i", filename)
 	}
 
-	if v.audio.replacementPath != "" {
-		ffmpegArgs = append(ffmpegArgs, "-i", v.audio.replacementPath)
-	}
-
 	filterComplex := ""
 
 	// split part – video+audio inputs
@@ -202,27 +198,16 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 		return fmt.Errorf("no video output label generated")
 	}
 
-	var audioLabel string
-	if v.audio.replacementPath != "" {
-		replacementIndex := len(v.GetFilenames())
-		audioLabel = "replacement_audio"
-		filterComplex += fmt.Sprintf("[%d:a]atrim=0:%.4f,asetpts=PTS-STARTPTS[%s];", replacementIndex, v.GetDuration(), audioLabel)
-	} else if !v.audio.removed {
-		audioLabel = v.audio.lastAudioLabel()
-		if audioLabel == "" {
-			return fmt.Errorf("no audio output label generated")
-		}
+	audioLabel := v.audio.lastAudioLabel()
+	if audioLabel == "" {
+		return fmt.Errorf("no audio output label generated")
 	}
 
 	mapVideo := fmt.Sprintf("[%s]", videoLabel)
 	encoder := resolveVideoEncoder(parms.Codec, v.GetCodec())
 
-	if v.audio.removed {
-		ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", mapVideo, "-an", "-c:v", encoder)
-	} else {
-		mapAudio := fmt.Sprintf("[%s]", audioLabel)
-		ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-c:v", encoder)
-	}
+	mapAudio := fmt.Sprintf("[%s]", audioLabel)
+	ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-c:v", encoder)
 
 	// Threads (compute effective value - applyParameters modifies a copy)
 	effectiveThreads := parms.Threads
@@ -263,9 +248,9 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	}
 	ffmpegArgs = append(ffmpegArgs, "-pix_fmt", string(pf))
 
-	// Audio codec for MP4 output (skip when audio removed)
+	// Audio codec for MP4 output
 	outputExt := strings.ToLower(filepath.Ext(parms.OutputPath))
-	if !v.audio.removed && (outputExt == ".mp4" || outputExt == ".m4a") {
+	if outputExt == ".mp4" || outputExt == ".m4a" {
 		ffmpegArgs = append(ffmpegArgs, "-c:a", "aac")
 	}
 

@@ -12,8 +12,6 @@ type Audio struct {
 	duration        float64
 	labelCounter    uint64
 	filterComplex   []FilterComplex
-	replacementPath string
-	removed         bool
 }
 
 func (a *Audio) SetFilename(filenames []string) *Audio {

@@ -46,8 +46,6 @@ func (a *Audio) audioFilter(filter string) (*Audio, error) {
 		duration:        a.duration,
 		labelCounter:    a.labelCounter,
 		filterComplex:   filterComplex,
-		replacementPath: a.replacementPath,
-		removed:         a.removed,
 	}, nil
 }
 

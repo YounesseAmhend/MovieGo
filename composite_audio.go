@@ -85,7 +85,5 @@ func Composite(audios []Audio) (*Audio, error) {
 		duration:        maxDuration,
 		labelCounter:    first.labelCounter,
 		filterComplex:   audioFilterComplex,
-		replacementPath: "",
-		removed:         false,
 	}, nil
 }
