@@ -19,10 +19,10 @@ func Concatenate(videos []Video) (*Video, error) {
 			seen[filename] = struct{}{}
 			filenames = append(filenames, filename)
 		}
-		videoFilterComplex = append(videoFilterComplex, video.videoFilterComplex...)
-		audioFilterComplex = append(audioFilterComplex, video.audioFilterComplex...)
+		videoFilterComplex = append(videoFilterComplex, video.filterComplex...)
+		audioFilterComplex = append(audioFilterComplex, video.audio.filterComplex...)
 
-		filterElement += fmt.Sprintf("[%s][%s]", video.lastVideoLabel(), video.lastAudioLabel())
+		filterElement += fmt.Sprintf("[%s][%s]", video.lastVideoLabel(), video.audio.lastAudioLabel())
 		duration += video.duration
 	}
 	label := fmt.Sprintf("concat_%d", incrementGlobalCounter())
@@ -42,12 +42,15 @@ func Concatenate(videos []Video) (*Video, error) {
 		FilterElement: filterElement,
 	})
 
+	newAudio := videos[0].audio
+	newAudio.filterComplex = audioFilterComplex
+	newAudio.duration = duration
+
 	return &Video{
 		filenames:          filenames,
 		startTime:          0,
 		endTime:            duration,
-		audioFilterComplex: audioFilterComplex,
-		videoFilterComplex: videoFilterComplex,
+		filterComplex: videoFilterComplex,
 		duration:           duration,
 		codec:              videos[0].codec,
 		width:              videos[0].width,
@@ -56,7 +59,7 @@ func Concatenate(videos []Video) (*Video, error) {
 		frames:             uint64(float64(videos[0].fps) * duration),
 		ffmpegArgs:         videos[0].ffmpegArgs,
 		isTemp:             false,
-		audio:              videos[0].audio,
+		audio:              newAudio,
 		bitRate:            videos[0].bitRate,
 		preset:             videos[0].preset,
 		withMask:           videos[0].withMask,

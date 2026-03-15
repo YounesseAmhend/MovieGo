@@ -94,19 +94,39 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	}
 
 	ffmpegArgs := []string{}
-	for _, filename := range v.GetFilenames() {
+	videoFilenames := v.GetFilenames()
+	for _, filename := range videoFilenames {
 		ffmpegArgs = append(ffmpegArgs, "-i", filename)
 	}
-	if v.audioReplacementPath != "" {
-		ffmpegArgs = append(ffmpegArgs, "-i", v.audioReplacementPath)
+
+	// Collect audio-only filenames (from v.audio.filenames) that aren't already
+	// in the video input list. These come from standalone Audio files mixed in
+	// via Composite() + SetAudio().
+	videoFilenameSet := make(map[string]struct{}, len(videoFilenames))
+	for _, fn := range videoFilenames {
+		videoFilenameSet[fn] = struct{}{}
+	}
+	var audioOnlyFilenames []string
+	for _, fn := range v.audio.filenames {
+		if _, exists := videoFilenameSet[fn]; !exists {
+			audioOnlyFilenames = append(audioOnlyFilenames, fn)
+			videoFilenameSet[fn] = struct{}{} // avoid duplicates
+		}
+	}
+	for _, filename := range audioOnlyFilenames {
+		ffmpegArgs = append(ffmpegArgs, "-i", filename)
+	}
+
+	if v.audio.replacementPath != "" {
+		ffmpegArgs = append(ffmpegArgs, "-i", v.audio.replacementPath)
 	}
 
 	filterComplex := ""
 
-	// split part
-	for i, filename := range v.GetFilenames() {
+	// split part – video+audio inputs
+	for i, filename := range videoFilenames {
 		videoLabels := []string{}
-		for _, filter := range v.videoFilterComplex {
+		for _, filter := range v.filterComplex {
 			currentFilename := filter.FileCopy.Filename
 			if currentFilename == filename {
 				videoLabels = append(videoLabels, filter.FileCopy.Label)
@@ -115,7 +135,7 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 		filterComplex += fmt.Sprintf("[%d:v]format=yuva420p,split=%d[%s];", i, len(videoLabels), strings.Join(videoLabels, "]["))
 
 		audioLabels := []string{}
-		for _, filter := range v.audioFilterComplex {
+		for _, filter := range v.audio.filterComplex {
 			currentFilename := filter.FileCopy.Filename
 			if currentFilename == filename {
 				audioLabels = append(audioLabels, filter.FileCopy.Label)
@@ -125,20 +145,36 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 
 	}
 
+	// split part – audio-only inputs (no video stream)
+	for j, filename := range audioOnlyFilenames {
+		inputIndex := len(videoFilenames) + j
+		audioLabels := []string{}
+		for _, filter := range v.audio.filterComplex {
+			if filter.FileCopy.Filename == filename {
+				audioLabels = append(audioLabels, filter.FileCopy.Label)
+			}
+		}
+		if len(audioLabels) > 1 {
+			filterComplex += fmt.Sprintf("[%d:a]asplit=%d[%s];", inputIndex, len(audioLabels), strings.Join(audioLabels, "]["))
+		} else if len(audioLabels) == 1 {
+			filterComplex += fmt.Sprintf("[%d:a]anull[%s];", inputIndex, audioLabels[0])
+		}
+	}
+
 	videoIndex, audioIndex := 0, 0
-	videoLen, audioLen := len(v.videoFilterComplex), len(v.audioFilterComplex)
+	videoLen, audioLen := len(v.filterComplex), len(v.audio.filterComplex)
 
 	for videoIndex < videoLen || audioIndex < audioLen {
 		nextOrder := uint64(math.MaxUint64)
 		if videoIndex < videoLen {
-			nextOrder = v.videoFilterComplex[videoIndex].Order
+			nextOrder = v.filterComplex[videoIndex].Order
 		}
-		if audioIndex < audioLen && v.audioFilterComplex[audioIndex].Order < nextOrder {
-			nextOrder = v.audioFilterComplex[audioIndex].Order
+		if audioIndex < audioLen && v.audio.filterComplex[audioIndex].Order < nextOrder {
+			nextOrder = v.audio.filterComplex[audioIndex].Order
 		}
 
-		if videoIndex < videoLen && v.videoFilterComplex[videoIndex].Order == nextOrder {
-			filter := v.videoFilterComplex[videoIndex]
+		if videoIndex < videoLen && v.filterComplex[videoIndex].Order == nextOrder {
+			filter := v.filterComplex[videoIndex]
 			if filter.FilterElement != "" {
 				filterComplex += filter.FilterElement
 				if !strings.HasSuffix(filter.FilterElement, "]") {
@@ -148,8 +184,8 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 			}
 			videoIndex++
 		}
-		if audioIndex < audioLen && v.audioFilterComplex[audioIndex].Order == nextOrder {
-			filter := v.audioFilterComplex[audioIndex]
+		if audioIndex < audioLen && v.audio.filterComplex[audioIndex].Order == nextOrder {
+			filter := v.audio.filterComplex[audioIndex]
 			if filter.FilterElement != "" {
 				filterComplex += filter.FilterElement
 				if !strings.HasSuffix(filter.FilterElement, "]") {
@@ -167,12 +203,12 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	}
 
 	var audioLabel string
-	if v.audioReplacementPath != "" {
+	if v.audio.replacementPath != "" {
 		replacementIndex := len(v.GetFilenames())
 		audioLabel = "replacement_audio"
 		filterComplex += fmt.Sprintf("[%d:a]atrim=0:%.4f,asetpts=PTS-STARTPTS[%s];", replacementIndex, v.GetDuration(), audioLabel)
-	} else if !v.audioRemoved {
-		audioLabel = v.lastAudioLabel()
+	} else if !v.audio.removed {
+		audioLabel = v.audio.lastAudioLabel()
 		if audioLabel == "" {
 			return fmt.Errorf("no audio output label generated")
 		}
@@ -181,7 +217,7 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	mapVideo := fmt.Sprintf("[%s]", videoLabel)
 	encoder := resolveVideoEncoder(parms.Codec, v.GetCodec())
 
-	if v.audioRemoved {
+	if v.audio.removed {
 		ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", mapVideo, "-an", "-c:v", encoder)
 	} else {
 		mapAudio := fmt.Sprintf("[%s]", audioLabel)
@@ -229,7 +265,7 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 
 	// Audio codec for MP4 output (skip when audio removed)
 	outputExt := strings.ToLower(filepath.Ext(parms.OutputPath))
-	if !v.audioRemoved && (outputExt == ".mp4" || outputExt == ".m4a") {
+	if !v.audio.removed && (outputExt == ".mp4" || outputExt == ".m4a") {
 		ffmpegArgs = append(ffmpegArgs, "-c:a", "aac")
 	}
 

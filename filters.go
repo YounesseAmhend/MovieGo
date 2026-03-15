@@ -84,14 +84,14 @@ func resolveScaledDimensions(srcW, srcH uint64, params ScaleParams) (uint64, uin
 // videoFilter applies a video-only FFmpeg filter and passes audio through unchanged.
 // All public filter methods delegate to this.
 func (v *Video) videoFilter(filter string) (*Video, error) {
-	audioFilterComplex, _ := deepCopySlice(v.audioFilterComplex)
-	videoFilterComplex, _ := deepCopySlice(v.videoFilterComplex)
+	audioFilterComplex, _ := deepCopySlice(v.audio.filterComplex)
+	videoFilterComplex, _ := deepCopySlice(v.filterComplex)
 	order := incrementOrderCounter()
 
 	videoFilter := filter
 	audioFilter := "anull"
 
-	if len(v.videoFilterComplex) == 0 {
+	if len(v.filterComplex) == 0 {
 		filename := v.filenames[0]
 		fileLabel := v.nextLabel(filename)
 		fileCopyVideo := &FileCopy{
@@ -128,10 +128,13 @@ func (v *Video) videoFilter(filter string) (*Video, error) {
 		})
 		audioFilterComplex = append(audioFilterComplex, FilterComplex{
 			Order:         order,
-			FilterElement: fmt.Sprintf(filterInputFormat, v.lastAudioLabel(), audioFilter),
+			FilterElement: fmt.Sprintf(filterInputFormat, v.audio.lastAudioLabel(), audioFilter),
 			Label:         audioLabel,
 		})
 	}
+
+	newAudio := v.audio
+	newAudio.filterComplex = audioFilterComplex
 
 	return &Video{
 		filenames:          v.filenames,
@@ -142,10 +145,9 @@ func (v *Video) videoFilter(filter string) (*Video, error) {
 		duration:           v.duration,
 		frames:             v.frames,
 		ffmpegArgs:         v.ffmpegArgs,
-		videoFilterComplex: videoFilterComplex,
-		audioFilterComplex: audioFilterComplex,
+		filterComplex: videoFilterComplex,
 		isTemp:             v.isTemp,
-		audio:              v.audio,
+		audio:              newAudio,
 		bitRate:            v.bitRate,
 		preset:             v.preset,
 		withMask:           v.withMask,

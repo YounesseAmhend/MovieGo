@@ -1,13 +1,30 @@
 package moviego
 
+import "fmt"
+
 type Audio struct {
-	codec      string
-	sampleRate uint64
-	channels   uint8
-	bps        uint
-	bitRate    uint64
-	duration   float64
+	filenames       []string
+	codec           string
+	sampleRate      uint64
+	channels        uint8
+	bps             uint
+	bitRate         uint64
+	duration        float64
+	labelCounter    uint64
+	filterComplex   []FilterComplex
+	replacementPath string
+	removed         bool
 }
+
+func (a *Audio) SetFilename(filenames []string) *Audio {
+	a.filenames = filenames
+	return a
+}
+
+func (a *Audio) GetFilenames() []string {
+	return a.filenames
+}
+
 
 func (a *Audio) Codec(codec string) *Audio {
 	a.codec = codec
@@ -62,3 +79,24 @@ func (a *Audio) Duration(duration float64) *Audio {
 func (a *Audio) GetDuration() float64 {
 	return a.duration
 }
+
+func (a *Audio) lastAudioLabel() string {
+	if len(a.filterComplex) == 0 {
+		return ""
+	}
+	return a.filterComplex[len(a.filterComplex)-1].Label
+}
+
+func (a *Audio) lastFilename() string {
+	if len(a.filenames) == 0 {
+		return ""
+	}
+	return a.filenames[len(a.filenames)-1]
+}
+
+func (a *Audio) nextLabel() string {
+	id := incrementGlobalCounter()
+	safeName := sanitize(a.lastFilename())
+	return fmt.Sprintf("%d_%s", id, safeName)
+}
+

@@ -56,6 +56,17 @@ const (
 	CodecLibxvid  Codec = "libxvid"
 )
 
+type AudioCodec string
+
+const (
+	AudioCodecAAC    AudioCodec = "aac"
+	AudioCodecMP3    AudioCodec = "libmp3lame"
+	AudioCodecFLAC   AudioCodec = "flac"
+	AudioCodecOpus   AudioCodec = "libopus"
+	AudioCodecVorbis AudioCodec = "libvorbis"
+	AudioCodecPCM    AudioCodec = "pcm_s16le"
+)
+
 type preset string
 
 const (
@@ -140,3 +151,18 @@ type VideoParameters struct {
 	// Called periodically with encoding progress.
 	OnProgress func(Progress)
 }
+
+// AudioParameters holds configuration for audio processing.
+type AudioParameters struct {
+	OutputPath string
+	Threads    uint16
+	Codec      AudioCodec
+	SampleRate uint64
+	Channels   uint8
+	Bitrate    uint64
+	// SilentProgress disables the default colored progress bar.
+	SilentProgress bool
+	// OnProgress, when set, replaces the default colored progress bar.
+	OnProgress func(Progress)
+}
+

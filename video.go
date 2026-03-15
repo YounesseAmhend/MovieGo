@@ -48,8 +48,7 @@ type Video struct {
 	duration           float64
 	frames             uint64
 	ffmpegArgs         map[string][]string
-	videoFilterComplex []FilterComplex
-	audioFilterComplex []FilterComplex
+	filterComplex []FilterComplex
 	isTemp             bool
 	audio              Audio
 	bitRate            string
@@ -291,12 +290,8 @@ func (v *Video) HasAudio() bool {
 // Internal Helpers
 // ============================================================================
 
-func (v *Video) lastAudioLabel() string {
-	return v.audioFilterComplex[len(v.audioFilterComplex)-1].Label
-}
-
 func (v *Video) lastVideoLabel() string {
-	return v.videoFilterComplex[len(v.videoFilterComplex)-1].Label
+	return v.filterComplex[len(v.filterComplex)-1].Label
 }
 
 func (v *Video) applyParameters(parms VideoParameters) *Video {

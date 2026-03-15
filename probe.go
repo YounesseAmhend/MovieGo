@@ -106,6 +106,7 @@ func NewVideoFile(filename string) (*Video, error) {
 							audio.Duration(dur)
 						}
 					}
+					audio.SetFilename([]string{filename})
 					video.SetAudio(audio)
 				}
 			}
@@ -122,4 +123,72 @@ func NewVideoFile(filename string) (*Video, error) {
 	// FPS is already set to default 30 if parsing failed, so it should be valid
 
 	return video, nil
+}
+
+// AudioFile probes an audio file using ffprobe and returns an Audio with
+// its metadata populated (codec, sample rate, channels, bit rate, duration).
+func AudioFile(filename string) (*Audio, error) {
+	if filename == "" {
+		return nil, fmt.Errorf("filename cannot be empty")
+	}
+
+	ffprobePath, err := getFFprobePath()
+	if err != nil {
+		return nil, fmt.Errorf("failed to probe audio file path not found '%s': %w", filename, err)
+	}
+	cmd := exec.Command(ffprobePath, "-v", "error", "-show_format", "-show_streams", filename, "-of", "json")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to probe audio file '%s': %w", filename, err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(output, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse audio metadata for '%s': %w", filename, err)
+	}
+
+	audio := &Audio{
+		filenames: []string{filename},
+	}
+
+	if streams, ok := result["streams"].([]interface{}); ok {
+		for _, stream := range streams {
+			streamMap, ok := stream.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			codecType, _ := streamMap["codec_type"].(string)
+			if codecType != "audio" {
+				continue
+			}
+			if codec, ok := streamMap["codec_name"].(string); ok {
+				audio.Codec(codec)
+			}
+			if sampleRate, ok := streamMap["sample_rate"].(string); ok {
+				if sr, err := strconv.ParseUint(sampleRate, 10, 64); err == nil {
+					audio.SampleRate(sr)
+				}
+			}
+			if channels, ok := streamMap["channels"].(float64); ok {
+				audio.Channels(uint8(channels))
+			}
+			if bitRate, ok := streamMap["bit_rate"].(string); ok {
+				if br, err := strconv.ParseUint(bitRate, 10, 64); err == nil {
+					audio.BitRate(br)
+				}
+			}
+			if duration, ok := streamMap["duration"].(string); ok {
+				if dur, err := strconv.ParseFloat(duration, 64); err == nil {
+					audio.Duration(dur)
+				}
+			}
+			break // use the first audio stream
+		}
+	}
+
+	if audio.GetCodec() == "" {
+		return nil, fmt.Errorf("no audio stream found in '%s'", filename)
+	}
+
+	return audio, nil
 }

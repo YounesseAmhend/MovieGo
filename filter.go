@@ -28,9 +28,9 @@ func (f *FilterComplex) addFilter(filter string) *FilterComplex {
 }
 
 func (v *Video) lastVideoFilter() *FilterComplex {
-	return &v.videoFilterComplex[len(v.videoFilterComplex)-1]
+	return &v.filterComplex[len(v.filterComplex)-1]
 }
 
 func (v *Video) lastAudioFilter() *FilterComplex {
-	return &v.audioFilterComplex[len(v.audioFilterComplex)-1]
+	return &v.audio.filterComplex[len(v.audio.filterComplex)-1]
 }

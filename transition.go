@@ -82,10 +82,10 @@ func ConcatenateWithTransition(clip1, clip2 *Video, params TransitionParams) (*V
 		}
 	}
 
-	videoFilterComplex := append([]FilterComplex{}, clip1.videoFilterComplex...)
-	videoFilterComplex = append(videoFilterComplex, clip2.videoFilterComplex...)
-	audioFilterComplex := append([]FilterComplex{}, clip1.audioFilterComplex...)
-	audioFilterComplex = append(audioFilterComplex, clip2.audioFilterComplex...)
+	videoFilterComplex := append([]FilterComplex{}, clip1.filterComplex...)
+	videoFilterComplex = append(videoFilterComplex, clip2.filterComplex...)
+	audioFilterComplex := append([]FilterComplex{}, clip1.audio.filterComplex...)
+	audioFilterComplex = append(audioFilterComplex, clip2.audio.filterComplex...)
 
 	order := incrementOrderCounter()
 	label := fmt.Sprintf("xfade_%d", incrementGlobalCounter())
@@ -95,7 +95,7 @@ func ConcatenateWithTransition(clip1, clip2 *Video, params TransitionParams) (*V
 		string(params.Transition), params.Duration, offset,
 		label+"_v")
 	acrossfadeFilter := fmt.Sprintf("[%s][%s]acrossfade=d=%.4f:c1=tri:c2=tri[%s]",
-		clip1.lastAudioLabel(), clip2.lastAudioLabel(),
+		clip1.audio.lastAudioLabel(), clip2.audio.lastAudioLabel(),
 		params.Duration, label+"_a")
 
 	videoFilterComplex = append(videoFilterComplex, FilterComplex{
@@ -111,12 +111,15 @@ func ConcatenateWithTransition(clip1, clip2 *Video, params TransitionParams) (*V
 
 	newDuration := clip1.GetDuration() + clip2.GetDuration() - params.Duration
 
+	newAudio := clip1.audio
+	newAudio.filterComplex = audioFilterComplex
+	newAudio.duration = newDuration
+
 	return &Video{
 		filenames:          filenames,
 		startTime:          0,
 		endTime:            newDuration,
-		audioFilterComplex: audioFilterComplex,
-		videoFilterComplex: videoFilterComplex,
+		filterComplex: videoFilterComplex,
 		duration:           newDuration,
 		codec:              clip1.codec,
 		width:              clip1.width,
@@ -125,7 +128,7 @@ func ConcatenateWithTransition(clip1, clip2 *Video, params TransitionParams) (*V
 		frames:             uint64(float64(clip1.fps) * newDuration),
 		ffmpegArgs:         clip1.ffmpegArgs,
 		isTemp:             false,
-		audio:              clip1.audio,
+		audio:              newAudio,
 		bitRate:            clip1.bitRate,
 		preset:             clip1.preset,
 		withMask:           clip1.withMask,

@@ -110,8 +110,8 @@ func stackVideos(videos []Video, videoFilter string, width, height uint64, label
 			seen[filename] = struct{}{}
 			filenames = append(filenames, filename)
 		}
-		videoFilterComplex = append(videoFilterComplex, video.videoFilterComplex...)
-		audioFilterComplex = append(audioFilterComplex, video.audioFilterComplex...)
+		videoFilterComplex = append(videoFilterComplex, video.filterComplex...)
+		audioFilterComplex = append(audioFilterComplex, video.audio.filterComplex...)
 		if video.duration > maxDuration {
 			maxDuration = video.duration
 		}
@@ -132,12 +132,15 @@ func stackVideos(videos []Video, videoFilter string, width, height uint64, label
 	})
 
 	base := prepared[0]
+	newAudio := base.audio
+	newAudio.filterComplex = audioFilterComplex
+	newAudio.duration = maxDuration
+
 	return &Video{
 		filenames:          filenames,
 		startTime:          0,
 		endTime:            maxDuration,
-		audioFilterComplex: audioFilterComplex,
-		videoFilterComplex: videoFilterComplex,
+		filterComplex: videoFilterComplex,
 		duration:           maxDuration,
 		codec:              base.codec,
 		width:              width,
@@ -146,7 +149,7 @@ func stackVideos(videos []Video, videoFilter string, width, height uint64, label
 		frames:             uint64(float64(base.fps) * maxDuration),
 		ffmpegArgs:         base.ffmpegArgs,
 		isTemp:             false,
-		audio:              base.audio,
+		audio:              newAudio,
 		bitRate:            base.bitRate,
 		preset:             base.preset,
 		withMask:           base.withMask,
@@ -172,7 +175,7 @@ func buildAudioMix(videos []Video) string {
 	var b strings.Builder
 	for _, video := range videos {
 		b.WriteString("[")
-		b.WriteString(video.lastAudioLabel())
+		b.WriteString(video.audio.lastAudioLabel())
 		b.WriteString("]")
 	}
 	b.WriteString(fmt.Sprintf("amix=inputs=%d:duration=longest", len(videos)))

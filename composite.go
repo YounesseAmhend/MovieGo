@@ -5,7 +5,7 @@ import "fmt"
 // initRawVideo ensures a video has at least one filter complex entry by adding
 // identity filters (null/anull) for raw videos loaded directly from files.
 func initRawVideo(v *Video) {
-	if len(v.videoFilterComplex) > 0 {
+	if len(v.filterComplex) > 0 {
 		return
 	}
 	filename := v.filenames[0]
@@ -16,13 +16,13 @@ func initRawVideo(v *Video) {
 	label := v.nextLabel(filename)
 	order := incrementOrderCounter()
 
-	v.videoFilterComplex = append(v.videoFilterComplex, FilterComplex{
+	v.filterComplex = append(v.filterComplex, FilterComplex{
 		Order:         order,
 		FilterElement: fmt.Sprintf("[%s]null", fileCopyVideo.Label),
 		FileCopy:      fileCopyVideo,
 		Label:         fmt.Sprintf("%s_v", label),
 	})
-	v.audioFilterComplex = append(v.audioFilterComplex, FilterComplex{
+	v.audio.filterComplex = append(v.audio.filterComplex, FilterComplex{
 		Order:         order,
 		FilterElement: fmt.Sprintf("[%s]anull", fileCopyAudio.Label),
 		FileCopy:      fileCopyAudio,
@@ -61,8 +61,8 @@ func CompositeClip(videos []Video) (*Video, error) {
 			seen[filename] = struct{}{}
 			filenames = append(filenames, filename)
 		}
-		videoFilterComplex = append(videoFilterComplex, video.videoFilterComplex...)
-		audioFilterComplex = append(audioFilterComplex, video.audioFilterComplex...)
+		videoFilterComplex = append(videoFilterComplex, video.filterComplex...)
+		audioFilterComplex = append(audioFilterComplex, video.audio.filterComplex...)
 
 		if video.duration > maxDuration {
 			maxDuration = video.duration
@@ -120,7 +120,7 @@ func CompositeClip(videos []Video) (*Video, error) {
 	// Build audio mix: [a0][a1][a2]...amix=inputs=N:duration=longest
 	audioMixElement := ""
 	for _, video := range videos {
-		audioMixElement += fmt.Sprintf("[%s]", video.lastAudioLabel())
+		audioMixElement += fmt.Sprintf("[%s]", video.audio.lastAudioLabel())
 	}
 	audioMixElement += fmt.Sprintf("amix=inputs=%d:duration=longest", len(videos))
 
@@ -131,12 +131,15 @@ func CompositeClip(videos []Video) (*Video, error) {
 	})
 
 	bg := videos[0]
+	newAudio := bg.audio
+	newAudio.filterComplex = audioFilterComplex
+	newAudio.duration = maxDuration
+
 	return &Video{
 		filenames:          filenames,
 		startTime:          0,
 		endTime:            maxDuration,
-		audioFilterComplex: audioFilterComplex,
-		videoFilterComplex: videoFilterComplex,
+		filterComplex: videoFilterComplex,
 		duration:           maxDuration,
 		codec:              bg.codec,
 		width:              bg.width,
@@ -145,7 +148,7 @@ func CompositeClip(videos []Video) (*Video, error) {
 		frames:             uint64(float64(bg.fps) * maxDuration),
 		ffmpegArgs:         bg.ffmpegArgs,
 		isTemp:             false,
-		audio:              bg.audio,
+		audio:              newAudio,
 		bitRate:            bg.bitRate,
 		preset:             bg.preset,
 		withMask:           bg.withMask,

@@ -60,8 +60,8 @@ func (v *Video) Speed(speed float64, pitch ...float64) (*Video, error) {
 		}
 	}
 
-	audioFilterComplex, _ := deepCopySlice(v.audioFilterComplex)
-	videoFilterComplex, _ := deepCopySlice(v.videoFilterComplex)
+	audioFilterComplex, _ := deepCopySlice(v.audio.filterComplex)
+	videoFilterComplex, _ := deepCopySlice(v.filterComplex)
 	order := incrementOrderCounter()
 
 	newDuration := v.duration / speed
@@ -69,7 +69,7 @@ func (v *Video) Speed(speed float64, pitch ...float64) (*Video, error) {
 	videoFilter := fmt.Sprintf("setpts=PTS/%.4f", speed)
 	audioFilter := buildAudioSpeedFilter(speed, pitchVal, sampleRate)
 
-	if len(v.videoFilterComplex) == 0 {
+	if len(v.filterComplex) == 0 {
 		filename := v.filenames[0]
 		fileLabel := v.nextLabel(filename)
 		fileCopyVideo := &FileCopy{
@@ -106,10 +106,13 @@ func (v *Video) Speed(speed float64, pitch ...float64) (*Video, error) {
 		})
 		audioFilterComplex = append(audioFilterComplex, FilterComplex{
 			Order:         order,
-			FilterElement: fmt.Sprintf("[%s]%s", v.lastAudioLabel(), audioFilter),
+			FilterElement: fmt.Sprintf("[%s]%s", v.audio.lastAudioLabel(), audioFilter),
 			Label:         audioLabel,
 		})
 	}
+
+	newAudio := v.audio
+	newAudio.filterComplex = audioFilterComplex
 
 	newVideo := &Video{
 		filenames:          v.filenames,
@@ -120,10 +123,9 @@ func (v *Video) Speed(speed float64, pitch ...float64) (*Video, error) {
 		duration:           newDuration,
 		frames:             uint64(float64(v.fps) * newDuration),
 		ffmpegArgs:         v.ffmpegArgs,
-		videoFilterComplex: videoFilterComplex,
-		audioFilterComplex: audioFilterComplex,
+		filterComplex: videoFilterComplex,
 		isTemp:             v.isTemp,
-		audio:              v.audio,
+		audio:              newAudio,
 		bitRate:            v.bitRate,
 		preset:             v.preset,
 		withMask:           v.withMask,

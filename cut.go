@@ -24,12 +24,12 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 		return nil, fmt.Errorf("invalid range: start must be less than end")
 	}
 
-	audioFilterComplex, _ := deepCopySlice(v.audioFilterComplex)
-	videoFilterComplex, _ := deepCopySlice(v.videoFilterComplex)
+	audioFilterComplex, _ := deepCopySlice(v.audio.filterComplex)
+	videoFilterComplex, _ := deepCopySlice(v.filterComplex)
 	order := incrementOrderCounter()
 
 
-	if len(v.videoFilterComplex) == 0 { // No need to check for audio\
+	if len(v.filterComplex) == 0 { // No need to check for audio\
 		filename := v.filenames[0]
 		fileLabel := v.nextLabel(filename)
 		fileCopyVideo := &FileCopy{
@@ -66,12 +66,15 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 		})
 		audioFilterComplex = append(audioFilterComplex, FilterComplex{
 			Order:         order,
-			FilterElement: fmt.Sprintf("[%s]atrim=start=%.2f:end=%.2f,asetpts=PTS-STARTPTS", v.lastAudioLabel(), start, end),
+			FilterElement: fmt.Sprintf("[%s]atrim=start=%.2f:end=%.2f,asetpts=PTS-STARTPTS", v.audio.lastAudioLabel(), start, end),
 			Label:         audioLabel,
 		})
 	}
 
 	// Create a new video with copied properties
+	newAudio := v.audio
+	newAudio.filterComplex = audioFilterComplex
+
 	newVideo := &Video{
 		filenames:          v.filenames,
 		codec:              v.codec,
@@ -81,10 +84,9 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 		duration:           end - start,
 		frames:             uint64(float64(v.fps) * (end - start)),
 		ffmpegArgs:         v.ffmpegArgs,
-		videoFilterComplex: videoFilterComplex,
-		audioFilterComplex: audioFilterComplex,
+		filterComplex: videoFilterComplex,
 		isTemp:             v.isTemp,
-		audio:              v.audio,
+		audio:              newAudio,
 		bitRate:            v.bitRate,
 		preset:             v.preset,
 		withMask:           v.withMask,
