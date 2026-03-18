@@ -50,13 +50,13 @@ func buildAudioSpeedFilter(speed, pitch float64, sampleRate uint64) string {
 // Returns a new Video object with updated metadata (no file is created until WriteVideo is called)
 func (v *Video) Speed(speed float64, pitch ...float64) (*Video, error) {
 	if speed <= 0 {
-		return nil, fmt.Errorf("speed must be positive, got %f", speed)
+		return nil, fmt.Errorf("Speed: speed must be positive (got=%f, file=%s, label=%s)", speed, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	pitchVal := 0.0
 	if len(pitch) > 0 {
 		pitchVal = pitch[0]
 		if pitchVal < 0 {
-			return nil, fmt.Errorf("pitch must be non-negative, got %f", pitchVal)
+			return nil, fmt.Errorf("Speed: pitch must be non-negative (got=%f, file=%s, label=%s)", pitchVal, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 		}
 	}
 

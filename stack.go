@@ -83,7 +83,7 @@ func XStack(videos []Video, layout string) (*Video, error) {
 
 	width, height, err := inferXStackDimensions(layout, prepared)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("XStack: %w", err)
 	}
 
 	filter := buildStackInputs(prepared) + fmt.Sprintf("xstack=inputs=%d:layout=%s", len(prepared), layout)
@@ -233,7 +233,7 @@ func evalXStackExpr(expr string, videos []Video) (int, error) {
 
 		value, err := evalXStackToken(token, videos)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("evalXStackExpr: %w", err)
 		}
 		total += value
 	}
@@ -243,18 +243,22 @@ func evalXStackExpr(expr string, videos []Video) (int, error) {
 
 func evalXStackToken(token string, videos []Video) (int, error) {
 	if isNumericToken(token) {
-		return strconv.Atoi(token)
+		n, err := strconv.Atoi(token)
+		if err != nil {
+			return 0, fmt.Errorf("evalXStackToken: %w", err)
+		}
+		return n, nil
 	}
 	if len(token) <= 1 || (token[0] != 'w' && token[0] != 'h') {
-		return 0, fmt.Errorf("unsupported token %q", token)
+		return 0, fmt.Errorf("evalXStackToken: unsupported token %q", token)
 	}
 
 	index, err := strconv.Atoi(token[1:])
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("evalXStackToken: %w", err)
 	}
 	if index < 0 || index >= len(videos) {
-		return 0, fmt.Errorf("index %d out of range", index)
+		return 0, fmt.Errorf("evalXStackToken: index %d out of range (len=%d)", index, len(videos))
 	}
 
 	if token[0] == 'w' {

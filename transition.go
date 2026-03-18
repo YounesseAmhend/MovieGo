@@ -41,7 +41,7 @@ func ConcatenateWithTransition(clip1, clip2 *Video, params TransitionParams) (*V
 		return nil, fmt.Errorf("ConcatenateWithTransition: both clips must be non-nil")
 	}
 	if params.Duration <= 0 {
-		return nil, fmt.Errorf("ConcatenateWithTransition: duration must be positive")
+		return nil, fmt.Errorf("ConcatenateWithTransition: duration must be positive (duration=%.4f)", params.Duration)
 	}
 	if params.Duration >= clip1.GetDuration() {
 		return nil, fmt.Errorf("ConcatenateWithTransition: duration %f must be less than clip1 duration %f", params.Duration, clip1.GetDuration())

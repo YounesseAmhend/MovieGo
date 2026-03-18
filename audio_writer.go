@@ -15,16 +15,16 @@ import (
 // Write processes the audio with applied filters and writes to output file
 func (a *Audio) Write(parms AudioParameters) error {
 	if parms.OutputPath == "" {
-		return fmt.Errorf("output path is empty, cannot write audio")
+		return fmt.Errorf("WriteAudio: output path is empty, cannot write audio")
 	}
 
 	if len(a.filenames) == 0 {
-		return fmt.Errorf("audio filename is empty, cannot process audio")
+		return fmt.Errorf("WriteAudio: audio filename is empty, cannot process audio (file=<none>)")
 	}
 
 	ffmpegPath, err := getFFmpegPath()
 	if err != nil {
-		return fmt.Errorf("failed to get ffmpeg path: %w", err)
+		return fmt.Errorf("WriteAudio: failed to get ffmpeg path: %w", err)
 	}
 
 	ffmpegArgs := []string{}
@@ -65,7 +65,7 @@ func (a *Audio) Write(parms AudioParameters) error {
 	} else if audioLabel != "" {
 		ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", fmt.Sprintf("[%s]", audioLabel))
 	} else {
-		return fmt.Errorf("no audio stream to map")
+		return fmt.Errorf("WriteAudio: no audio stream to map (file=%s)", safeFirstFilename(a.filenames))
 	}
 
 	// Threads
@@ -132,9 +132,9 @@ func (a *Audio) Write(parms AudioParameters) error {
 	if err := cmd.Run(); err != nil {
 		stderr := strings.TrimSpace(stderrBuf.String())
 		if stderr != "" {
-			return fmt.Errorf("failed to execute ffmpeg: %w\nffmpeg stderr: %s", err, stderr)
+			return fmt.Errorf("WriteAudio: failed to execute ffmpeg: %w\nffmpeg stderr: %s", err, stderr)
 		}
-		return fmt.Errorf("failed to execute ffmpeg: %w", err)
+		return fmt.Errorf("WriteAudio: failed to execute ffmpeg: %w", err)
 	}
 
 	return nil
@@ -143,11 +143,11 @@ func (a *Audio) Write(parms AudioParameters) error {
 func (a *Audio) runAudioWithProgress(cmd *exec.Cmd, stderrBuf *bytes.Buffer, onProgress func(Progress)) error {
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create stdout pipe: %w", err)
+		return fmt.Errorf("WriteAudio: failed to create stdout pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start ffmpeg: %w", err)
+		return fmt.Errorf("WriteAudio: failed to start ffmpeg: %w", err)
 	}
 
 	totalDuration := a.duration
@@ -183,9 +183,9 @@ func (a *Audio) runAudioWithProgress(cmd *exec.Cmd, stderrBuf *bytes.Buffer, onP
 	if err := cmd.Wait(); err != nil {
 		stderr := strings.TrimSpace(stderrBuf.String())
 		if stderr != "" {
-			return fmt.Errorf("failed to execute ffmpeg: %w\nffmpeg stderr: %s", err, stderr)
+			return fmt.Errorf("WriteAudio: failed to execute ffmpeg: %w\nffmpeg stderr: %s", err, stderr)
 		}
-		return fmt.Errorf("failed to execute ffmpeg: %w", err)
+		return fmt.Errorf("WriteAudio: failed to execute ffmpeg: %w", err)
 	}
 
 	return nil

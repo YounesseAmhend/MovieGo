@@ -85,6 +85,14 @@ func (a *Audio) lastAudioLabel() string {
 	return a.filterComplex[len(a.filterComplex)-1].Label
 }
 
+// safeLabel returns the last audio filter label, or "<none>" if the filter chain is empty.
+func (a *Audio) safeLabel() string {
+	if len(a.filterComplex) == 0 {
+		return "<none>"
+	}
+	return a.lastAudioLabel()
+}
+
 func (a *Audio) lastFilename() string {
 	if len(a.filenames) == 0 {
 		return ""

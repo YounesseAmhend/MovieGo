@@ -70,18 +70,18 @@ func formatCmd(cmd *exec.Cmd) string {
 // WriteVideo processes the video with applied filters and writes to output file
 func (v *Video) WriteVideo(parms VideoParameters) error {
 	if parms.OutputPath == "" {
-		return fmt.Errorf("output path is empty, cannot write video")
+		return fmt.Errorf("WriteVideo: output path is empty, cannot write video")
 	}
 
 	// Validate essential video properties before processing
 	if len(v.GetFilenames()) == 0 {
-		return fmt.Errorf("video filename is empty, cannot process video")
+		return fmt.Errorf("WriteVideo: video filename is empty, cannot process video (file=<none>)")
 	}
 	if v.GetWidth() <= 0 || v.GetHeight() <= 0 {
-		return fmt.Errorf("video dimensions are invalid (%dx%d), cannot process video", v.GetWidth(), v.GetHeight())
+		return fmt.Errorf("WriteVideo: video dimensions are invalid (%dx%d), cannot process video (file=%s)", v.GetWidth(), v.GetHeight(), safeFirstFilename(v.filenames))
 	}
 	if v.GetDuration() <= 0 {
-		return fmt.Errorf("video duration is invalid (%.2f), cannot process video", v.GetDuration())
+		return fmt.Errorf("WriteVideo: video duration is invalid (%.2f), cannot process video (file=%s)", v.GetDuration(), safeFirstFilename(v.filenames))
 	}
 
 	// Apply parameters to video
@@ -90,7 +90,7 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 
 	ffmpegPath, err := getFFmpegPath()
 	if err != nil {
-		return fmt.Errorf("failed to get ffmpeg path: %w", err)
+		return fmt.Errorf("WriteVideo: failed to get ffmpeg path: %w", err)
 	}
 
 	ffmpegArgs := []string{}
@@ -195,12 +195,12 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 
 	videoLabel := v.lastVideoLabel()
 	if videoLabel == "" {
-		return fmt.Errorf("no video output label generated")
+		return fmt.Errorf("WriteVideo: no video output label generated (file=%s)", safeFirstFilename(v.filenames))
 	}
 
 	audioLabel := v.audio.lastAudioLabel()
 	if audioLabel == "" {
-		return fmt.Errorf("no audio output label generated")
+		return fmt.Errorf("WriteVideo: no audio output label generated (file=%s)", safeFirstFilename(v.filenames))
 	}
 
 	mapVideo := fmt.Sprintf("[%s]", videoLabel)
@@ -282,9 +282,9 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	if err := cmd.Run(); err != nil {
 		stderr := strings.TrimSpace(stderrBuf.String())
 		if stderr != "" {
-			return fmt.Errorf("failed to execute ffmpeg: %w\nffmpeg stderr: %s", err, stderr)
+			return fmt.Errorf("WriteVideo: failed to execute ffmpeg: %w\nffmpeg stderr: %s", err, stderr)
 		}
-		return fmt.Errorf("failed to execute ffmpeg: %w", err)
+		return fmt.Errorf("WriteVideo: failed to execute ffmpeg: %w", err)
 	}
 
 	return nil
@@ -293,11 +293,11 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 func (v *Video) runWithProgress(cmd *exec.Cmd, stderrBuf *bytes.Buffer, onProgress func(Progress)) error {
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create stdout pipe: %w", err)
+		return fmt.Errorf("WriteVideo: failed to create stdout pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start ffmpeg: %w", err)
+		return fmt.Errorf("WriteVideo: failed to start ffmpeg: %w", err)
 	}
 
 	totalDuration := v.GetDuration()
@@ -339,9 +339,9 @@ func (v *Video) runWithProgress(cmd *exec.Cmd, stderrBuf *bytes.Buffer, onProgre
 	if err := cmd.Wait(); err != nil {
 		stderr := strings.TrimSpace(stderrBuf.String())
 		if stderr != "" {
-			return fmt.Errorf("failed to execute ffmpeg: %w\nffmpeg stderr: %s", err, stderr)
+			return fmt.Errorf("WriteVideo: failed to execute ffmpeg: %w\nffmpeg stderr: %s", err, stderr)
 		}
-		return fmt.Errorf("failed to execute ffmpeg: %w", err)
+		return fmt.Errorf("WriteVideo: failed to execute ffmpeg: %w", err)
 	}
 
 	return nil

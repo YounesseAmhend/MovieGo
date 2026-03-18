@@ -11,22 +11,22 @@ import (
 
 func NewVideoFile(filename string) (*Video, error) {
 	if filename == "" {
-		return nil, fmt.Errorf("filename cannot be empty")
+		return nil, fmt.Errorf("NewVideoFile: filename cannot be empty")
 	}
 
 	ffprobePath, err := getFFprobePath()
 	if err != nil {
-		return nil, fmt.Errorf("failed to probe video file path not found'%s': %w", filename, err)
+		return nil, fmt.Errorf("NewVideoFile: ffprobe not found for '%s': %w", filename, err)
 	}
 	cmd := exec.Command(ffprobePath, "-v", "error", "-show_format", "-show_streams", filename, "-of", "json")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to probe video file '%s': %w", filename, err)
+		return nil, fmt.Errorf("NewVideoFile: failed to probe video file '%s': %w", filename, err)
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(output, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse video metadata for '%s': %w", filename, err)
+		return nil, fmt.Errorf("NewVideoFile: failed to parse metadata for '%s': %w", filename, err)
 	}
 
 	video := &Video{
@@ -115,10 +115,10 @@ func NewVideoFile(filename string) (*Video, error) {
 
 	// Validate essential video properties
 	if video.GetWidth() <= 0 || video.GetHeight() <= 0 {
-		return nil, fmt.Errorf("video file '%s' has invalid dimensions (%dx%d)", filename, video.GetWidth(), video.GetHeight())
+		return nil, fmt.Errorf("NewVideoFile: video file '%s' has invalid dimensions (%dx%d)", filename, video.GetWidth(), video.GetHeight())
 	}
 	if video.GetDuration() <= 0 {
-		return nil, fmt.Errorf("video file '%s' has invalid duration (%.2f)", filename, video.GetDuration())
+		return nil, fmt.Errorf("NewVideoFile: video file '%s' has invalid duration (%.2f)", filename, video.GetDuration())
 	}
 	// FPS is already set to default 30 if parsing failed, so it should be valid
 
@@ -129,22 +129,22 @@ func NewVideoFile(filename string) (*Video, error) {
 // its metadata populated (codec, sample rate, channels, bit rate, duration).
 func AudioFile(filename string) (*Audio, error) {
 	if filename == "" {
-		return nil, fmt.Errorf("filename cannot be empty")
+		return nil, fmt.Errorf("AudioFile: filename cannot be empty")
 	}
 
 	ffprobePath, err := getFFprobePath()
 	if err != nil {
-		return nil, fmt.Errorf("failed to probe audio file path not found '%s': %w", filename, err)
+		return nil, fmt.Errorf("AudioFile: ffprobe not found for '%s': %w", filename, err)
 	}
 	cmd := exec.Command(ffprobePath, "-v", "error", "-show_format", "-show_streams", filename, "-of", "json")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to probe audio file '%s': %w", filename, err)
+		return nil, fmt.Errorf("AudioFile: failed to probe audio file '%s': %w", filename, err)
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(output, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse audio metadata for '%s': %w", filename, err)
+		return nil, fmt.Errorf("AudioFile: failed to parse metadata for '%s': %w", filename, err)
 	}
 
 	audio := &Audio{
@@ -187,7 +187,7 @@ func AudioFile(filename string) (*Audio, error) {
 	}
 
 	if audio.GetCodec() == "" {
-		return nil, fmt.Errorf("no audio stream found in '%s'", filename)
+		return nil, fmt.Errorf("AudioFile: no audio stream found in '%s'", filename)
 	}
 
 	return audio, nil

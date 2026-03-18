@@ -60,7 +60,7 @@ func resolveScaledDimensions(srcW, srcH uint64, params ScaleParams) (uint64, uin
 	case width == -1 && height > 0:
 		width = int(float64(srcW) * (float64(height) / float64(srcH)))
 	case width == -1:
-		return 0, 0, fmt.Errorf("width can only be -1 when height is specified")
+		return 0, 0, fmt.Errorf("Scale: width can only be -1 when height is specified (width=%d, height=%d)", params.Width, params.Height)
 	}
 
 	switch {
@@ -69,13 +69,13 @@ func resolveScaledDimensions(srcW, srcH uint64, params ScaleParams) (uint64, uin
 	case height == -1 && width > 0:
 		height = int(float64(srcH) * (float64(width) / float64(srcW)))
 	case height == -1:
-		return 0, 0, fmt.Errorf("height can only be -1 when width is specified")
+		return 0, 0, fmt.Errorf("Scale: height can only be -1 when width is specified (width=%d, height=%d)", params.Width, params.Height)
 	}
 
 	width = evenDimension(width)
 	height = evenDimension(height)
 	if width < 2 || height < 2 {
-		return 0, 0, fmt.Errorf("scale produces invalid dimensions %dx%d", width, height)
+		return 0, 0, fmt.Errorf("Scale: produces invalid dimensions %dx%d", width, height)
 	}
 
 	return uint64(width), uint64(height), nil
@@ -163,7 +163,7 @@ func (v *Video) videoFilter(filter string) (*Video, error) {
 // Saturation adjusts color saturation (0-3, 1 = no change).
 func (v *Video) Saturation(saturation float64) (*Video, error) {
 	if saturation < 0 || saturation > 3 {
-		return nil, fmt.Errorf("saturation must be 0-3, got %f", saturation)
+		return nil, fmt.Errorf("Saturation: must be 0-3 (got=%f, file=%s, label=%s)", saturation, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	return v.videoFilter(fmt.Sprintf("eq=saturation=%.4f", saturation))
 }
@@ -171,7 +171,7 @@ func (v *Video) Saturation(saturation float64) (*Video, error) {
 // Brightness adjusts brightness (-1 to 1, 0 = no change).
 func (v *Video) Brightness(brightness float64) (*Video, error) {
 	if brightness < -1 || brightness > 1 {
-		return nil, fmt.Errorf("brightness must be -1 to 1, got %f", brightness)
+		return nil, fmt.Errorf("Brightness: must be -1 to 1 (got=%f, file=%s, label=%s)", brightness, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	return v.videoFilter(fmt.Sprintf("eq=brightness=%.4f", brightness))
 }
@@ -179,7 +179,7 @@ func (v *Video) Brightness(brightness float64) (*Video, error) {
 // Contrast adjusts contrast (-1000 to 1000, 1 = no change).
 func (v *Video) Contrast(contrast float64) (*Video, error) {
 	if contrast < -1000 || contrast > 1000 {
-		return nil, fmt.Errorf("contrast must be -1000 to 1000, got %f", contrast)
+		return nil, fmt.Errorf("Contrast: must be -1000 to 1000 (got=%f, file=%s, label=%s)", contrast, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	return v.videoFilter(fmt.Sprintf("eq=contrast=%.4f", contrast))
 }
@@ -188,12 +188,12 @@ func (v *Video) Contrast(contrast float64) (*Video, error) {
 // Uses explicit dimensions from video metadata; ensures dimensions are even for codec compatibility.
 func (v *Video) ScaleRatio(ratio float64) (*Video, error) {
 	if ratio <= 0 {
-		return nil, fmt.Errorf("ratio must be positive, got %f", ratio)
+		return nil, fmt.Errorf("ScaleRatio: ratio must be positive (got=%f, file=%s, label=%s)", ratio, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	width := int(float64(v.width) * ratio)
 	height := int(float64(v.height) * ratio)
 	if width < 1 || height < 1 {
-		return nil, fmt.Errorf("ratio %f produces invalid dimensions %dx%d", ratio, width, height)
+		return nil, fmt.Errorf("ScaleRatio: ratio %f produces invalid dimensions %dx%d (file=%s, label=%s)", ratio, width, height, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	// Ensure dimensions are divisible by 2 (required by most codecs)
 	width = width & 0xFFFFFFFE
@@ -225,7 +225,7 @@ func (v *Video) VerticalFlip() (*Video, error) {
 // FadeIn applies a fade-in effect for the given duration (seconds) at the start.
 func (v *Video) FadeIn(duration float64) (*Video, error) {
 	if duration <= 0 {
-		return nil, fmt.Errorf("duration must be positive, got %f", duration)
+		return nil, fmt.Errorf("FadeIn: duration must be positive (got=%f, file=%s, label=%s)", duration, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	return v.videoFilter(fmt.Sprintf("fade=t=in:st=0:d=%.4f", duration))
 }
@@ -233,10 +233,10 @@ func (v *Video) FadeIn(duration float64) (*Video, error) {
 // FadeOut applies a fade-out effect for the given duration (seconds) at the end.
 func (v *Video) FadeOut(duration float64) (*Video, error) {
 	if duration <= 0 {
-		return nil, fmt.Errorf("duration must be positive, got %f", duration)
+		return nil, fmt.Errorf("FadeOut: duration must be positive (got=%f, file=%s, label=%s)", duration, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	if duration > v.duration {
-		return nil, fmt.Errorf("duration %f exceeds video duration %f", duration, v.duration)
+		return nil, fmt.Errorf("FadeOut: duration %f exceeds video duration %f (file=%s, label=%s)", duration, v.duration, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	startTime := v.duration - duration
 	return v.videoFilter(fmt.Sprintf("fade=t=out:st=%.4f:d=%.4f", startTime, duration))
@@ -244,17 +244,18 @@ func (v *Video) FadeOut(duration float64) (*Video, error) {
 
 // Eq applies brightness, contrast, saturation, and gamma adjustments.
 func (v *Video) Eq(params EqParams) (*Video, error) {
+	file, label := safeFirstFilename(v.filenames), safeLastVideoLabel(v)
 	if params.Brightness < -1 || params.Brightness > 1 {
-		return nil, fmt.Errorf("brightness must be -1 to 1, got %f", params.Brightness)
+		return nil, fmt.Errorf("Eq: brightness must be -1 to 1 (got=%f, file=%s, label=%s)", params.Brightness, file, label)
 	}
 	if params.Contrast < -1000 || params.Contrast > 1000 {
-		return nil, fmt.Errorf("contrast must be -1000 to 1000, got %f", params.Contrast)
+		return nil, fmt.Errorf("Eq: contrast must be -1000 to 1000 (got=%f, file=%s, label=%s)", params.Contrast, file, label)
 	}
 	if params.Saturation < 0 || params.Saturation > 3 {
-		return nil, fmt.Errorf("saturation must be 0-3, got %f", params.Saturation)
+		return nil, fmt.Errorf("Eq: saturation must be 0-3 (got=%f, file=%s, label=%s)", params.Saturation, file, label)
 	}
 	if params.Gamma < 0.1 || params.Gamma > 10 {
-		return nil, fmt.Errorf("gamma must be 0.1 to 10, got %f", params.Gamma)
+		return nil, fmt.Errorf("Eq: gamma must be 0.1 to 10 (got=%f, file=%s, label=%s)", params.Gamma, file, label)
 	}
 	parts := []string{
 		fmt.Sprintf("brightness=%.4f", params.Brightness),
@@ -268,7 +269,7 @@ func (v *Video) Eq(params EqParams) (*Video, error) {
 // Hue adjusts hue and saturation.
 func (v *Video) Hue(params HueParams) (*Video, error) {
 	if params.Saturation < -10 || params.Saturation > 10 {
-		return nil, fmt.Errorf("saturation must be -10 to 10, got %f", params.Saturation)
+		return nil, fmt.Errorf("Hue: saturation must be -10 to 10 (got=%f, file=%s, label=%s)", params.Saturation, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	filter := fmt.Sprintf("hue=h=%.4f", params.Degrees)
 	if params.Saturation != 1 {
@@ -279,11 +280,12 @@ func (v *Video) Hue(params HueParams) (*Video, error) {
 
 // Scale resizes the video. Use -1 for width or height to preserve aspect ratio.
 func (v *Video) Scale(params ScaleParams) (*Video, error) {
+	file, label := safeFirstFilename(v.filenames), safeLastVideoLabel(v)
 	if params.Width < -1 || params.Height < -1 {
-		return nil, fmt.Errorf("width and height must be >= -1")
+		return nil, fmt.Errorf("Scale: width and height must be >= -1 (width=%d, height=%d, file=%s, label=%s)", params.Width, params.Height, file, label)
 	}
 	if params.Width == 0 && params.Height == 0 {
-		return nil, fmt.Errorf("at least one of width or height must be non-zero")
+		return nil, fmt.Errorf("Scale: at least one of width or height must be non-zero (width=%d, height=%d, file=%s, label=%s)", params.Width, params.Height, file, label)
 	}
 	widthStr := fmt.Sprintf("%d", params.Width)
 	heightStr := fmt.Sprintf("%d", params.Height)
@@ -295,12 +297,12 @@ func (v *Video) Scale(params ScaleParams) (*Video, error) {
 	}
 	targetWidth, targetHeight, err := resolveScaledDimensions(v.width, v.height, params)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Scale[file=%s, label=%s]: %w", file, label, err)
 	}
 	// -1 preserves aspect ratio based on the other dimension
 	scaled, err := v.videoFilter(fmt.Sprintf("scale=w=%s:h=%s", widthStr, heightStr))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Scale[file=%s, label=%s]: %w", file, label, err)
 	}
 	scaled.width = targetWidth
 	scaled.height = targetHeight
@@ -309,16 +311,17 @@ func (v *Video) Scale(params ScaleParams) (*Video, error) {
 
 // Crop crops the video to the specified region.
 func (v *Video) Crop(params CropParams) (*Video, error) {
+	file, label := safeFirstFilename(v.filenames), safeLastVideoLabel(v)
 	if params.Width <= 0 || params.Height <= 0 {
-		return nil, fmt.Errorf("crop width and height must be positive")
+		return nil, fmt.Errorf("Crop: width and height must be positive (width=%d, height=%d, file=%s, label=%s)", params.Width, params.Height, file, label)
 	}
 	if params.X < 0 || params.Y < 0 {
-		return nil, fmt.Errorf("crop x and y must be non-negative")
+		return nil, fmt.Errorf("Crop: x and y must be non-negative (x=%d, y=%d, file=%s, label=%s)", params.X, params.Y, file, label)
 	}
 	cropped, err := v.videoFilter(fmt.Sprintf("crop=w=%d:h=%d:x=%d:y=%d",
 		params.Width, params.Height, params.X, params.Y))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Crop[file=%s, label=%s]: %w", file, label, err)
 	}
 	cropped.width = uint64(evenDimension(params.Width))
 	cropped.height = uint64(evenDimension(params.Height))
@@ -327,16 +330,17 @@ func (v *Video) Crop(params CropParams) (*Video, error) {
 
 // Pad adds padding to the video.
 func (v *Video) Pad(params PadParams) (*Video, error) {
+	file, label := safeFirstFilename(v.filenames), safeLastVideoLabel(v)
 	if params.Width < 0 || params.Height < 0 {
-		return nil, fmt.Errorf("pad width and height must be non-negative")
+		return nil, fmt.Errorf("Pad: width and height must be non-negative (width=%d, height=%d, file=%s, label=%s)", params.Width, params.Height, file, label)
 	}
 	if params.X < 0 || params.Y < 0 {
-		return nil, fmt.Errorf("pad x and y must be non-negative")
+		return nil, fmt.Errorf("Pad: x and y must be non-negative (x=%d, y=%d, file=%s, label=%s)", params.X, params.Y, file, label)
 	}
 	padded, err := v.videoFilter(fmt.Sprintf("pad=width=%d:height=%d:x=%d:y=%d",
 		params.Width, params.Height, params.X, params.Y))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Pad[file=%s, label=%s]: %w", file, label, err)
 	}
 	if params.Width > 0 {
 		padded.width = uint64(evenDimension(params.Width))
@@ -350,7 +354,7 @@ func (v *Video) Pad(params PadParams) (*Video, error) {
 // Blur applies a Gaussian blur. Sigma controls blur strength (higher = more blur).
 func (v *Video) Blur(sigma float64) (*Video, error) {
 	if sigma <= 0 {
-		return nil, fmt.Errorf("sigma must be positive, got %f", sigma)
+		return nil, fmt.Errorf("Blur: sigma must be positive (got=%f, file=%s, label=%s)", sigma, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	return v.videoFilter(fmt.Sprintf("gblur=sigma=%.4f", sigma))
 }
@@ -358,7 +362,7 @@ func (v *Video) Blur(sigma float64) (*Video, error) {
 // Sharpen applies an unsharp mask. Amount controls sharpening strength (1.0-5.0 typical).
 func (v *Video) Sharpen(amount float64) (*Video, error) {
 	if amount <= 0 {
-		return nil, fmt.Errorf("amount must be positive, got %f", amount)
+		return nil, fmt.Errorf("Sharpen: amount must be positive (got=%f, file=%s, label=%s)", amount, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	return v.videoFilter(fmt.Sprintf("unsharp=5:5:%.4f:5:5:0", amount))
 }
@@ -376,7 +380,7 @@ func (v *Video) Sepia() (*Video, error) {
 // Vignette applies a vignette (darkened corners) effect. Angle controls darkness (radians, PI/5 typical).
 func (v *Video) Vignette(angle float64) (*Video, error) {
 	if angle <= 0 {
-		return nil, fmt.Errorf("angle must be positive, got %f", angle)
+		return nil, fmt.Errorf("Vignette: angle must be positive (got=%f, file=%s, label=%s)", angle, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	return v.videoFilter(fmt.Sprintf("vignette=angle=%.4f", angle))
 }

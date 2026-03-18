@@ -12,7 +12,7 @@ func (v *Video) AnimatedRotate(a Animation) (*Video, error) {
 // AnimatedScale applies a time-based scale. Start/End are scale ratios (1.0 = 100%).
 func (v *Video) AnimatedScale(a Animation) (*Video, error) {
 	if a.Start <= 0 || a.End <= 0 {
-		return nil, fmt.Errorf("AnimatedScale: start and end must be positive")
+		return nil, fmt.Errorf("AnimatedScale: start and end must be positive (start=%.4f, end=%.4f, file=%s, label=%s)", a.Start, a.End, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	expr := a.toExprDefault()
 	filter := fmt.Sprintf("scale=w='trunc(iw*(%s)/2)*2':h='trunc(ih*(%s)/2)*2':eval=frame", expr, expr)
@@ -23,7 +23,7 @@ func (v *Video) AnimatedScale(a Animation) (*Video, error) {
 // Uses boxblur for expression support; radius is in pixels (uses floor for integer radius).
 func (v *Video) AnimatedBlur(a Animation) (*Video, error) {
 	if a.Start < 0 || a.End < 0 {
-		return nil, fmt.Errorf("AnimatedBlur: start and end must be non-negative")
+		return nil, fmt.Errorf("AnimatedBlur: start and end must be non-negative (start=%.4f, end=%.4f, file=%s, label=%s)", a.Start, a.End, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	expr := a.toExprDefault()
 	filter := fmt.Sprintf("boxblur=lr='floor(%s+0.5)':lp=1", expr)
@@ -32,23 +32,24 @@ func (v *Video) AnimatedBlur(a Animation) (*Video, error) {
 
 // AnimatedColor applies time-based color adjustments. Nil fields are not animated.
 func (v *Video) AnimatedColor(ac AnimatedColor) (*Video, error) {
+	file, label := safeFirstFilename(v.filenames), safeLastVideoLabel(v)
 	var err error
 	if ac.Brightness != nil {
 		v, err = v.animatedEqPart("brightness", *ac.Brightness, -1, 1)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("AnimatedColor[file=%s, label=%s]: %w", file, label, err)
 		}
 	}
 	if ac.Contrast != nil {
 		v, err = v.animatedEqPart("contrast", *ac.Contrast, -1000, 1000)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("AnimatedColor[file=%s, label=%s]: %w", file, label, err)
 		}
 	}
 	if ac.Saturation != nil {
 		v, err = v.animatedEqPart("saturation", *ac.Saturation, 0, 3)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("AnimatedColor[file=%s, label=%s]: %w", file, label, err)
 		}
 	}
 	if ac.Hue != nil {
@@ -56,7 +57,7 @@ func (v *Video) AnimatedColor(ac AnimatedColor) (*Video, error) {
 		filter := fmt.Sprintf("hue=h='%s'", expr)
 		v, err = v.videoFilter(filter)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("AnimatedColor[file=%s, label=%s]: %w", file, label, err)
 		}
 	}
 	return v, nil
@@ -64,7 +65,7 @@ func (v *Video) AnimatedColor(ac AnimatedColor) (*Video, error) {
 
 func (v *Video) animatedEqPart(name string, a Animation, minVal, maxVal float64) (*Video, error) {
 	if a.Start < minVal || a.Start > maxVal || a.End < minVal || a.End > maxVal {
-		return nil, fmt.Errorf("AnimatedColor %s: values must be in [%v, %v]", name, minVal, maxVal)
+		return nil, fmt.Errorf("AnimatedColor %s: values must be in [%v, %v] (start=%.4f, end=%.4f, file=%s, label=%s)", name, minVal, maxVal, a.Start, a.End, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	expr := a.toExprDefault()
 	filter := fmt.Sprintf("eq=%s='%s'", name, expr)
@@ -74,7 +75,7 @@ func (v *Video) animatedEqPart(name string, a Animation, minVal, maxVal float64)
 // Shake applies a position oscillation (camera shake effect).
 func (v *Video) Shake(o Oscillation) (*Video, error) {
 	if o.Amplitude <= 0 {
-		return nil, fmt.Errorf("Shake: amplitude must be positive")
+		return nil, fmt.Errorf("Shake: amplitude must be positive (amplitude=%.4f, file=%s, label=%s)", o.Amplitude, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	amp := int(o.Amplitude)
 	if amp < 1 {
@@ -105,7 +106,7 @@ func (v *Video) Pulse(o Oscillation) (*Video, error) {
 // ZoomPan applies a Ken Burns style zoom and pan effect.
 func (v *Video) ZoomPan(params ZoomPanParams) (*Video, error) {
 	if params.Duration <= 0 {
-		return nil, fmt.Errorf("ZoomPan: duration must be positive")
+		return nil, fmt.Errorf("ZoomPan: duration must be positive (duration=%.4f, file=%s, label=%s)", params.Duration, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 	fps := int(v.fps)
 	if params.FPS > 0 {
@@ -122,7 +123,7 @@ func (v *Video) ZoomPan(params ZoomPanParams) (*Video, error) {
 		zoomExpr, xExpr, yExpr, frames, v.width, v.height, fps)
 	zoomed, err := v.videoFilter(filter)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ZoomPan[file=%s, label=%s]: %w", safeFirstFilename(v.filenames), safeLastVideoLabel(v), err)
 	}
 	zoomed.duration = params.Duration
 	zoomed.frames = uint64(frames)

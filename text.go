@@ -371,7 +371,7 @@ func (v *Video) addTextTypewriter(clip TextClip) (*Video, error) {
 		filter := charClip.buildDrawTextFilter(v.duration)
 		v, err = v.videoFilter(filter)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("AddText: %w", err)
 		}
 	}
 	if tw.Cursor != "" {
@@ -387,7 +387,7 @@ func (v *Video) addTextTypewriter(clip TextClip) (*Video, error) {
 		filter := cursorClip.buildDrawTextFilter(v.duration)
 		v, err = v.videoFilter(filter)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("AddText: %w", err)
 		}
 	}
 	return v, nil
@@ -396,13 +396,13 @@ func (v *Video) addTextTypewriter(clip TextClip) (*Video, error) {
 // AddTexts adds multiple text overlays to the video in one call.
 func (v *Video) AddTexts(clips []*TextClip) (*Video, error) {
 	var err error
-	for _, clip := range clips {
+	for i, clip := range clips {
 		if clip == nil {
-			return nil, fmt.Errorf("AddTexts: nil TextClip in slice")
+			return nil, fmt.Errorf("AddTexts: nil TextClip at index %d", i)
 		}
 		v, err = v.AddText(*clip)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("AddTexts[%d]: %w", i, err)
 		}
 	}
 	return v, nil

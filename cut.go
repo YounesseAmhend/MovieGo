@@ -20,8 +20,8 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 		end = v.duration
 	}
 	if start >= end {
-		// Return empty video if invalid range
-		return nil, fmt.Errorf("invalid range: start must be less than end")
+		return nil, fmt.Errorf("Cut: start must be less than end (start=%.4f, end=%.4f, duration=%.4f, file=%s, label=%s)",
+			start, end, v.duration, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
 	}
 
 	audioFilterComplex, _ := deepCopySlice(v.audio.filterComplex)

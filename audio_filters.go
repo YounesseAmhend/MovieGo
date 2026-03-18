@@ -52,7 +52,7 @@ func (a *Audio) audioFilter(filter string) (*Audio, error) {
 // Volume adjusts the audio volume (0.0 = silent, 1.0 = normal, >1.0 = louder).
 func (a *Audio) Volume(volume float64) (*Audio, error) {
 	if volume < 0 {
-		return nil, fmt.Errorf("volume must be non-negative, got %f", volume)
+		return nil, fmt.Errorf("Volume: must be non-negative (got=%f, file=%s, label=%s)", volume, safeFirstFilename(a.filenames), a.safeLabel())
 	}
 	return a.audioFilter(fmt.Sprintf("volume=%.4f", volume))
 }
@@ -60,7 +60,7 @@ func (a *Audio) Volume(volume float64) (*Audio, error) {
 // FadeIn applies a fade-in effect at the start.
 func (a *Audio) FadeIn(duration float64) (*Audio, error) {
 	if duration <= 0 {
-		return nil, fmt.Errorf("duration must be positive, got %f", duration)
+		return nil, fmt.Errorf("FadeIn: duration must be positive (got=%f, file=%s, label=%s)", duration, safeFirstFilename(a.filenames), a.safeLabel())
 	}
 	return a.audioFilter(fmt.Sprintf("afade=t=in:st=0:d=%.4f", duration))
 }
@@ -68,10 +68,10 @@ func (a *Audio) FadeIn(duration float64) (*Audio, error) {
 // FadeOut applies a fade-out effect ending at the audio's duration.
 func (a *Audio) FadeOut(duration float64) (*Audio, error) {
 	if duration <= 0 {
-		return nil, fmt.Errorf("duration must be positive, got %f", duration)
+		return nil, fmt.Errorf("FadeOut: duration must be positive (got=%f, file=%s, label=%s)", duration, safeFirstFilename(a.filenames), a.safeLabel())
 	}
 	if duration > a.duration {
-		return nil, fmt.Errorf("fade duration %.4f exceeds audio duration %.4f", duration, a.duration)
+		return nil, fmt.Errorf("FadeOut: duration %.4f exceeds audio duration %.4f (file=%s, label=%s)", duration, a.duration, safeFirstFilename(a.filenames), a.safeLabel())
 	}
 	startTime := a.duration - duration
 	return a.audioFilter(fmt.Sprintf("afade=t=out:st=%.4f:d=%.4f", startTime, duration))
@@ -80,7 +80,7 @@ func (a *Audio) FadeOut(duration float64) (*Audio, error) {
 // LowPass applies a low-pass filter with the given frequency.
 func (a *Audio) LowPass(freq float64) (*Audio, error) {
 	if freq <= 0 {
-		return nil, fmt.Errorf("frequency must be positive, got %f", freq)
+		return nil, fmt.Errorf("LowPass: frequency must be positive (got=%f, file=%s, label=%s)", freq, safeFirstFilename(a.filenames), a.safeLabel())
 	}
 	return a.audioFilter(fmt.Sprintf("lowpass=f=%.4f", freq))
 }
@@ -88,7 +88,7 @@ func (a *Audio) LowPass(freq float64) (*Audio, error) {
 // HighPass applies a high-pass filter with the given frequency.
 func (a *Audio) HighPass(freq float64) (*Audio, error) {
 	if freq <= 0 {
-		return nil, fmt.Errorf("frequency must be positive, got %f", freq)
+		return nil, fmt.Errorf("HighPass: frequency must be positive (got=%f, file=%s, label=%s)", freq, safeFirstFilename(a.filenames), a.safeLabel())
 	}
 	return a.audioFilter(fmt.Sprintf("highpass=f=%.4f", freq))
 }
@@ -97,7 +97,7 @@ func (a *Audio) HighPass(freq float64) (*Audio, error) {
 // Supported range: 0.5 to 100.0.
 func (a *Audio) Tempo(tempo float64) (*Audio, error) {
 	if tempo < 0.5 || tempo > 100.0 {
-		return nil, fmt.Errorf("tempo must be between 0.5 and 100.0, got %f", tempo)
+		return nil, fmt.Errorf("Tempo: must be between 0.5 and 100.0 (got=%f, file=%s, label=%s)", tempo, safeFirstFilename(a.filenames), a.safeLabel())
 	}
 	// ffmpeg's atempo only supports 0.5-2.0 per instance.
 	var filters []string
@@ -115,7 +115,7 @@ func (a *Audio) Tempo(tempo float64) (*Audio, error) {
 	newDuration := a.duration / tempo
 	newAudio, err := a.audioFilter(strings.Join(filters, ","))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Tempo[file=%s, label=%s]: %w", safeFirstFilename(a.filenames), a.safeLabel(), err)
 	}
 	newAudio.duration = newDuration
 	return newAudio, nil
@@ -140,7 +140,7 @@ func (a *Audio) Normalize() (*Audio, error) {
 // delay: delay in milliseconds, decay: decay amount (0-1).
 func (a *Audio) Echo(delay, decay float64) (*Audio, error) {
 	if delay <= 0 || decay <= 0 || decay >= 1 {
-		return nil, fmt.Errorf("invalid echo parameters: delay must be > 0 and decay must be between 0 and 1")
+		return nil, fmt.Errorf("Echo: invalid parameters (delay=%.4f, decay=%.4f, file=%s, label=%s) -- delay must be > 0 and decay must be between 0 and 1", delay, decay, safeFirstFilename(a.filenames), a.safeLabel())
 	}
 	return a.audioFilter(fmt.Sprintf("aecho=0.8:0.9:%.4f:%.4f", delay, decay))
 }
