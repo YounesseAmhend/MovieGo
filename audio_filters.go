@@ -49,6 +49,26 @@ func (a *Audio) audioFilter(filter string) (*Audio, error) {
 	}, nil
 }
 
+// MuteRanges mutes audio only during the specified time ranges.
+// Uses FFmpeg's volume filter with enable='between(t,s1,e1)+between(t,s2,e2)+...'.
+// If ranges is empty, returns the audio unchanged.
+func (a *Audio) MuteRanges(ranges []TimeRange) (*Audio, error) {
+	if len(ranges) == 0 {
+		return a, nil
+	}
+	var parts []string
+	for _, r := range ranges {
+		if r.Start < r.End {
+			parts = append(parts, fmt.Sprintf("between(t,%.4f,%.4f)", r.Start, r.End))
+		}
+	}
+	if len(parts) == 0 {
+		return a, nil
+	}
+	filter := fmt.Sprintf("volume=0:enable='%s'", strings.Join(parts, "+"))
+	return a.audioFilter(filter)
+}
+
 // Volume adjusts the audio volume (0.0 = silent, 1.0 = normal, >1.0 = louder).
 func (a *Audio) Volume(volume float64) (*Audio, error) {
 	if volume < 0 {

@@ -60,7 +60,7 @@ func TestAllFiltersStacked(t *testing.T) {
 		{
 			name:   "hue",
 			values: []float64{0, 90, 180, 270},
-			apply:  func(v *moviego.Video, x float64) (*moviego.Video, error) { return v.Hue(moviego.HueParams{Degrees: x, Saturation: 1}) },
+			apply:  func(v *moviego.Video, x float64) (*moviego.Video, error) { return v.Hue(moviego.HueParams{Degrees: moviego.F(x), Saturation: moviego.F(1)}) },
 			formatLabel: func(x float64) string { return fmt.Sprintf("Hue %.0f°", x) },
 		},
 		{
@@ -91,7 +91,7 @@ func TestAllFiltersStacked(t *testing.T) {
 		{
 			name:   "eq_saturation",
 			values: []float64{0.5, 1.0, 1.5, 2.0},
-			apply:  func(v *moviego.Video, x float64) (*moviego.Video, error) { return v.Eq(moviego.EqParams{Brightness: 0, Contrast: 1, Saturation: x, Gamma: 1}) },
+			apply:  func(v *moviego.Video, x float64) (*moviego.Video, error) { return v.Eq(moviego.EqParams{Brightness: moviego.F(0), Contrast: moviego.F(1), Saturation: moviego.F(x), Gamma: moviego.F(1)}) },
 			formatLabel: func(x float64) string { return fmt.Sprintf("Eq sat %.1f", x) },
 		},
 		{

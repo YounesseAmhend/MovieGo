@@ -128,6 +128,10 @@ type Progress struct {
 	FPS float64
 	// Whether encoding has finished.
 	Done bool
+	// ElapsedSeconds is wall-clock time since encoding started (set by run loop).
+	ElapsedSeconds float64
+	// ExpectedTotalSeconds is estimated total time; ETA remaining = ExpectedTotalSeconds - ElapsedSeconds.
+	ExpectedTotalSeconds float64
 }
 
 // VideoParameters holds configuration for video processing.

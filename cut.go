@@ -28,17 +28,16 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 	videoFilterComplex, _ := deepCopySlice(v.filterComplex)
 	order := incrementOrderCounter()
 
-
 	if len(v.filterComplex) == 0 { // No need to check for audio\
 		filename := v.filenames[0]
 		fileLabel := v.nextLabel(filename)
 		fileCopyVideo := &FileCopy{
 			Filename: filename,
-			Label: fmt.Sprintf("%s_v", fileLabel),
+			Label:    fmt.Sprintf("%s_v", fileLabel),
 		}
 		fileCopyAudio := &FileCopy{
 			Filename: filename,
-			Label: fmt.Sprintf("%s_a", fileLabel),
+			Label:    fmt.Sprintf("%s_a", fileLabel),
 		}
 		label := v.nextLabel(filename)
 		videoLabel := fmt.Sprintf("%s_v", label)
@@ -76,26 +75,26 @@ func (v *Video) Cut(start, end float64) (*Video, error) {
 	newAudio.filterComplex = audioFilterComplex
 
 	newVideo := &Video{
-		filenames:          v.filenames,
-		codec:              v.codec,
-		width:              v.width,
-		height:             v.height,
-		fps:                v.fps,
-		duration:           end - start,
-		frames:             uint64(float64(v.fps) * (end - start)),
-		ffmpegArgs:         v.ffmpegArgs,
-		filterComplex: videoFilterComplex,
-		isTemp:             v.isTemp,
-		audio:              newAudio,
-		bitRate:            v.bitRate,
-		preset:             v.preset,
-		withMask:           v.withMask,
-		pixelFormat:        v.pixelFormat,
-		startTime:          0,
-		endTime:            end - start,
-		position:           v.position,
-		animatedPosition:   v.animatedPosition,
-		animatedOpacity:    v.animatedOpacity,
+		filenames:        v.filenames,
+		codec:            v.codec,
+		width:            v.width,
+		height:           v.height,
+		fps:              v.fps,
+		duration:         end - start,
+		frames:           uint64(float64(v.fps) * (end - start)),
+		ffmpegArgs:       v.ffmpegArgs,
+		filterComplex:    videoFilterComplex,
+		isTemp:           v.isTemp,
+		audio:            newAudio,
+		bitRate:          v.bitRate,
+		preset:           v.preset,
+		withMask:         v.withMask,
+		pixelFormat:      v.pixelFormat,
+		startTime:        0,
+		endTime:          end - start,
+		position:         v.position,
+		animatedPosition: v.animatedPosition,
+		animatedOpacity:  v.animatedOpacity,
 	}
 
 	return newVideo, nil

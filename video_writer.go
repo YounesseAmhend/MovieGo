@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func writeFilterComplex(b *strings.Builder, raw string) {
@@ -93,6 +94,8 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 		return fmt.Errorf("WriteVideo: failed to get ffmpeg path: %w", err)
 	}
 
+
+
 	ffmpegArgs := []string{}
 	videoFilenames := v.GetFilenames()
 	for _, filename := range videoFilenames {
@@ -117,43 +120,62 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 		ffmpegArgs = append(ffmpegArgs, "-i", filename)
 	}
 
-	filterComplex := ""
+	var filterComplex strings.Builder
 
 	// split part – video+audio inputs
 	for i, filename := range videoFilenames {
 		videoLabels := []string{}
-		for _, filter := range v.filterComplex {
-			currentFilename := filter.FileCopy.Filename
-			if currentFilename == filename {
-				videoLabels = append(videoLabels, filter.FileCopy.Label)
+		for idx := range v.filterComplex {
+			f := &v.filterComplex[idx]
+			if f.FileCopy.Filename != filename {
+				continue
 			}
+			oldLabel := f.FileCopy.Label
+			newLabel := fmt.Sprintf("in%d_copy%d_v", i, len(videoLabels))
+			f.FileCopy.Label = newLabel
+			f.FilterElement = strings.Replace(f.FilterElement, "["+oldLabel+"]", "["+newLabel+"]", 1)
+			videoLabels = append(videoLabels, newLabel)
 		}
-		filterComplex += fmt.Sprintf("[%d:v]format=yuva420p,split=%d[%s];", i, len(videoLabels), strings.Join(videoLabels, "]["))
+		if len(videoLabels) > 0 {
+			filterComplex.WriteString(fmt.Sprintf("[%d:v]format=yuva420p,split=%d[%s];", i, len(videoLabels), strings.Join(videoLabels, "][")))
+		}
 
 		audioLabels := []string{}
-		for _, filter := range v.audio.filterComplex {
-			currentFilename := filter.FileCopy.Filename
-			if currentFilename == filename {
-				audioLabels = append(audioLabels, filter.FileCopy.Label)
+		for idx := range v.audio.filterComplex {
+			f := &v.audio.filterComplex[idx]
+			if f.FileCopy.Filename != filename {
+				continue
 			}
+			oldLabel := f.FileCopy.Label
+			newLabel := fmt.Sprintf("in%d_copy%d_a", i, len(audioLabels))
+			f.FileCopy.Label = newLabel
+			f.FilterElement = strings.Replace(f.FilterElement, "["+oldLabel+"]", "["+newLabel+"]", 1)
+			audioLabels = append(audioLabels, newLabel)
 		}
-		filterComplex += fmt.Sprintf("[%d:a]asplit=%d[%s];", i, len(audioLabels), strings.Join(audioLabels, "]["))
-
+		if len(audioLabels) > 0 {
+			filterComplex.WriteString(fmt.Sprintf("[%d:a]asplit=%d[%s];", i, len(audioLabels), strings.Join(audioLabels, "][")))
+		}
 	}
 
 	// split part – audio-only inputs (no video stream)
 	for j, filename := range audioOnlyFilenames {
 		inputIndex := len(videoFilenames) + j
 		audioLabels := []string{}
-		for _, filter := range v.audio.filterComplex {
-			if filter.FileCopy.Filename == filename {
-				audioLabels = append(audioLabels, filter.FileCopy.Label)
+		for idx := range v.audio.filterComplex {
+			f := &v.audio.filterComplex[idx]
+			if f.FileCopy.Filename != filename {
+				continue
 			}
+			oldLabel := f.FileCopy.Label
+			newLabel := fmt.Sprintf("in%d_copy%d_a", inputIndex, len(audioLabels))
+			f.FileCopy.Label = newLabel
+			f.FilterElement = strings.Replace(f.FilterElement, "["+oldLabel+"]", "["+newLabel+"]", 1)
+			audioLabels = append(audioLabels, newLabel)
 		}
 		if len(audioLabels) > 1 {
-			filterComplex += fmt.Sprintf("[%d:a]asplit=%d[%s];", inputIndex, len(audioLabels), strings.Join(audioLabels, "]["))
+			filterComplex.WriteString(fmt.Sprintf("[%d:a]asplit=%d[%s];", inputIndex, len(audioLabels), strings.Join(audioLabels, "][")))
 		} else if len(audioLabels) == 1 {
-			filterComplex += fmt.Sprintf("[%d:a]anull[%s];", inputIndex, audioLabels[0])
+			filterComplex.WriteString(fmt.Sprintf("[%d:a]anull[%s];", inputIndex, audioLabels[0]))
 		}
 	}
 
@@ -172,22 +194,22 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 		if videoIndex < videoLen && v.filterComplex[videoIndex].Order == nextOrder {
 			filter := v.filterComplex[videoIndex]
 			if filter.FilterElement != "" {
-				filterComplex += filter.FilterElement
+				filterComplex.WriteString(filter.FilterElement)
 				if !strings.HasSuffix(filter.FilterElement, "]") {
-					filterComplex += fmt.Sprintf("[%s]", filter.Label)
+					fmt.Fprintf(&filterComplex, "[%s]", filter.Label)
 				}
-				filterComplex += ";"
+				filterComplex.WriteString(";")
 			}
 			videoIndex++
 		}
 		if audioIndex < audioLen && v.audio.filterComplex[audioIndex].Order == nextOrder {
 			filter := v.audio.filterComplex[audioIndex]
 			if filter.FilterElement != "" {
-				filterComplex += filter.FilterElement
+				filterComplex.WriteString(filter.FilterElement)
 				if !strings.HasSuffix(filter.FilterElement, "]") {
-					filterComplex += fmt.Sprintf("[%s]", filter.Label)
+					fmt.Fprintf(&filterComplex, "[%s]", filter.Label)
 				}
-				filterComplex += ";"
+				filterComplex.WriteString(";")
 			}
 			audioIndex++
 		}
@@ -207,7 +229,7 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	encoder := resolveVideoEncoder(parms.Codec, v.GetCodec())
 
 	mapAudio := fmt.Sprintf("[%s]", audioLabel)
-	ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex, "-map", mapVideo, "-map", mapAudio, "-c:v", encoder)
+	ffmpegArgs = append(ffmpegArgs, "-filter_complex", filterComplex.String(), "-map", mapVideo, "-map", mapAudio, "-c:v", encoder)
 
 	// Threads (compute effective value - applyParameters modifies a copy)
 	effectiveThreads := parms.Threads
@@ -269,6 +291,7 @@ func (v *Video) WriteVideo(parms VideoParameters) error {
 	displayProgram = strings.TrimSuffix(displayProgram, filepath.Ext(displayProgram))
 	displayCmd := &exec.Cmd{Args: append([]string{displayProgram}, ffmpegArgs...)}
 
+	fmt.Printf("Writing to %s\n", parms.OutputPath)
 	fmt.Println(formatCmd(displayCmd))
 
 	if progressEnabled {
@@ -300,6 +323,7 @@ func (v *Video) runWithProgress(cmd *exec.Cmd, stderrBuf *bytes.Buffer, onProgre
 		return fmt.Errorf("WriteVideo: failed to start ffmpeg: %w", err)
 	}
 
+	startTime := time.Now()
 	totalDuration := v.GetDuration()
 	scanner := bufio.NewScanner(stdoutPipe)
 	cur := Progress{TotalDuration: totalDuration}
@@ -332,6 +356,12 @@ func (v *Video) runWithProgress(cmd *exec.Cmd, stderrBuf *bytes.Buffer, onProgre
 			if cur.Done {
 				cur.Percentage = 100
 			}
+			cur.ElapsedSeconds = time.Since(startTime).Seconds()
+			if cur.Percentage > 0 && cur.Percentage < 100 {
+				cur.ExpectedTotalSeconds = cur.ElapsedSeconds / (cur.Percentage / 100)
+			} else if cur.Done {
+				cur.ExpectedTotalSeconds = cur.ElapsedSeconds
+			}
 			onProgress(cur)
 		}
 	}
@@ -363,7 +393,7 @@ func defaultProgressHandler(outputPath string) func(Progress) {
 	return func(p Progress) {
 		if p.Done {
 			bar := strings.Repeat("█", 30)
-			dur := formatDuration(p.TotalDuration)
+			dur := formatDuration(p.ElapsedSeconds)
 			speed := formatSpeed(p.Speed)
 			line := "\r" + colorGreen + colorBold + fmt.Sprintf("%-18s", filename) + colorReset +
 				" " + colorGreen + bar + colorReset + " " +
@@ -381,14 +411,18 @@ func defaultProgressHandler(outputPath string) func(Progress) {
 		}
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", 30-filled)
 
-		elapsed := formatDuration(p.OutTime)
-		total := formatDuration(p.TotalDuration)
+		elapsed := formatDuration(p.ElapsedSeconds)
+		timePart := elapsed
+		if p.ExpectedTotalSeconds > 0 {
+			eta := formatDuration(p.ExpectedTotalSeconds - p.ElapsedSeconds)
+			timePart = elapsed + " ~" + eta
+		}
 
 		line := "\r" +
 			colorCyan + colorBold + fmt.Sprintf("%-18s", filename) + colorReset +
 			" " + colorGreen + bar + colorReset + " " +
 			colorWhite + fmt.Sprintf("%5.1f%%", pct) + colorReset + "  " +
-			colorDim + elapsed + " / " + total + colorReset + "  " +
+			colorDim + timePart + colorReset + "  " +
 			colorYellow + formatSpeed(p.Speed) + colorReset + clearLine
 		fmt.Fprint(os.Stderr, line)
 	}

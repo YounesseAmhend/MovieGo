@@ -35,7 +35,7 @@ func TestComplexIntegration(t *testing.T) {
 	clip1, _ := v1.Cut(1, 4) // 3 seconds
 	clip1, _ = clip1.Scale(moviego.ScaleParams{Width: 1280, Height: 720})
 	clip1, _ = clip1.Rotate(math.Pi / 10)
-	clip1, _ = clip1.Eq(moviego.EqParams{Brightness: 0.1, Contrast: 1.2, Saturation: 1.5, Gamma: 1.0})
+	clip1, _ = clip1.Eq(moviego.EqParams{Brightness: moviego.F(0.1), Contrast: moviego.F(1.2), Saturation: moviego.F(1.5), Gamma: moviego.F(1.0)})
 	clip1, _ = clip1.FadeIn(1.0)
 	// Audio
 	clip1Audio := clip1.GetAudio()

@@ -7,18 +7,23 @@ import (
 
 const filterInputFormat = "[%s]%s"
 
+// F returns a pointer to v for use in optional *float64 struct fields.
+func F(v float64) *float64 { return &v }
+
 // EqParams holds parameters for the eq (equalizer) filter: brightness, contrast, saturation, gamma.
+// Nil fields use ffmpeg defaults (brightness=0, contrast=1, saturation=1, gamma=1).
 type EqParams struct {
-	Brightness float64 // -1 to 1, default 0
-	Contrast   float64 // -1000 to 1000, default 1
-	Saturation float64 // 0 to 3, default 1
-	Gamma      float64 // 0.1 to 10, default 1
+	Brightness *float64 // -1 to 1, default 0
+	Contrast   *float64 // -1000 to 1000, default 1
+	Saturation *float64 // 0 to 3, default 1
+	Gamma      *float64 // 0.1 to 10, default 1
 }
 
 // HueParams holds parameters for the hue filter.
+// Nil fields use ffmpeg defaults (degrees=0, saturation=1).
 type HueParams struct {
-	Degrees    float64 // hue angle in degrees
-	Saturation float64 // -10 to 10, default 1
+	Degrees    *float64 // hue angle in degrees, default 0
+	Saturation *float64 // -10 to 10, default 1
 }
 
 // ScaleParams holds parameters for the scale filter.
@@ -244,36 +249,61 @@ func (v *Video) FadeOut(duration float64) (*Video, error) {
 
 // Eq applies brightness, contrast, saturation, and gamma adjustments.
 func (v *Video) Eq(params EqParams) (*Video, error) {
+	brightness := 0.0
+	contrast := 1.0
+	saturation := 1.0
+	gamma := 1.0
+	if params.Brightness != nil {
+		brightness = *params.Brightness
+	}
+	if params.Contrast != nil {
+		contrast = *params.Contrast
+	}
+	if params.Saturation != nil {
+		saturation = *params.Saturation
+	}
+	if params.Gamma != nil {
+		gamma = *params.Gamma
+	}
+
 	file, label := safeFirstFilename(v.filenames), safeLastVideoLabel(v)
-	if params.Brightness < -1 || params.Brightness > 1 {
-		return nil, fmt.Errorf("Eq: brightness must be -1 to 1 (got=%f, file=%s, label=%s)", params.Brightness, file, label)
+	if brightness < -1 || brightness > 1 {
+		return nil, fmt.Errorf("Eq: brightness must be -1 to 1 (got=%f, file=%s, label=%s)", brightness, file, label)
 	}
-	if params.Contrast < -1000 || params.Contrast > 1000 {
-		return nil, fmt.Errorf("Eq: contrast must be -1000 to 1000 (got=%f, file=%s, label=%s)", params.Contrast, file, label)
+	if contrast < -1000 || contrast > 1000 {
+		return nil, fmt.Errorf("Eq: contrast must be -1000 to 1000 (got=%f, file=%s, label=%s)", contrast, file, label)
 	}
-	if params.Saturation < 0 || params.Saturation > 3 {
-		return nil, fmt.Errorf("Eq: saturation must be 0-3 (got=%f, file=%s, label=%s)", params.Saturation, file, label)
+	if saturation < 0 || saturation > 3 {
+		return nil, fmt.Errorf("Eq: saturation must be 0-3 (got=%f, file=%s, label=%s)", saturation, file, label)
 	}
-	if params.Gamma < 0.1 || params.Gamma > 10 {
-		return nil, fmt.Errorf("Eq: gamma must be 0.1 to 10 (got=%f, file=%s, label=%s)", params.Gamma, file, label)
+	if gamma < 0.1 || gamma > 10 {
+		return nil, fmt.Errorf("Eq: gamma must be 0.1 to 10 (got=%f, file=%s, label=%s)", gamma, file, label)
 	}
 	parts := []string{
-		fmt.Sprintf("brightness=%.4f", params.Brightness),
-		fmt.Sprintf("contrast=%.4f", params.Contrast),
-		fmt.Sprintf("saturation=%.4f", params.Saturation),
-		fmt.Sprintf("gamma=%.4f", params.Gamma),
+		fmt.Sprintf("brightness=%.4f", brightness),
+		fmt.Sprintf("contrast=%.4f", contrast),
+		fmt.Sprintf("saturation=%.4f", saturation),
+		fmt.Sprintf("gamma=%.4f", gamma),
 	}
 	return v.videoFilter("eq=" + strings.Join(parts, ":"))
 }
 
 // Hue adjusts hue and saturation.
 func (v *Video) Hue(params HueParams) (*Video, error) {
-	if params.Saturation < -10 || params.Saturation > 10 {
-		return nil, fmt.Errorf("Hue: saturation must be -10 to 10 (got=%f, file=%s, label=%s)", params.Saturation, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
+	degrees := 0.0
+	saturation := 1.0
+	if params.Degrees != nil {
+		degrees = *params.Degrees
 	}
-	filter := fmt.Sprintf("hue=h=%.4f", params.Degrees)
-	if params.Saturation != 1 {
-		filter += fmt.Sprintf(":s=%.4f", params.Saturation)
+	if params.Saturation != nil {
+		saturation = *params.Saturation
+	}
+	if saturation < -10 || saturation > 10 {
+		return nil, fmt.Errorf("Hue: saturation must be -10 to 10 (got=%f, file=%s, label=%s)", saturation, safeFirstFilename(v.filenames), safeLastVideoLabel(v))
+	}
+	filter := fmt.Sprintf("hue=h=%.4f", degrees)
+	if saturation != 1 {
+		filter += fmt.Sprintf(":s=%.4f", saturation)
 	}
 	return v.videoFilter(filter)
 }

@@ -3,6 +3,17 @@ package moviego
 import "fmt"
 
 func Concatenate(videos []Video) (*Video, error) {
+	if len(videos) == 0 {
+		return nil, fmt.Errorf("Concatenate: no videos provided")
+	}
+	if len(videos) == 1 {
+		v := videos[0]
+		return &v, nil
+	}
+
+	for i := range videos {
+		initRawVideo(&videos[i])
+	}
 
 	filenames := []string{}
 	videoFilterComplex := []FilterComplex{}

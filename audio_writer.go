@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Write processes the audio with applied filters and writes to output file
@@ -150,6 +151,7 @@ func (a *Audio) runAudioWithProgress(cmd *exec.Cmd, stderrBuf *bytes.Buffer, onP
 		return fmt.Errorf("WriteAudio: failed to start ffmpeg: %w", err)
 	}
 
+	startTime := time.Now()
 	totalDuration := a.duration
 	scanner := bufio.NewScanner(stdoutPipe)
 	cur := Progress{TotalDuration: totalDuration}
@@ -175,6 +177,12 @@ func (a *Audio) runAudioWithProgress(cmd *exec.Cmd, stderrBuf *bytes.Buffer, onP
 			cur.Done = value == "end"
 			if cur.Done {
 				cur.Percentage = 100
+			}
+			cur.ElapsedSeconds = time.Since(startTime).Seconds()
+			if cur.Percentage > 0 && cur.Percentage < 100 {
+				cur.ExpectedTotalSeconds = cur.ElapsedSeconds / (cur.Percentage / 100)
+			} else if cur.Done {
+				cur.ExpectedTotalSeconds = cur.ElapsedSeconds
 			}
 			onProgress(cur)
 		}

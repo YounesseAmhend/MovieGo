@@ -2,6 +2,12 @@ package moviego
 
 import "fmt"
 
+// TimeRange represents a start and end time in seconds.
+type TimeRange struct {
+	Start float64
+	End   float64
+}
+
 type Audio struct {
 	filenames       []string
 	codec           string
